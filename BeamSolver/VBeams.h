@@ -30,7 +30,7 @@ namespace Beams {
 		Eigen::Index id; //for global matrix and DOFs use
 		int pos; //position of Coords in the points vector;
 		bool free_flag = true;
-		std::set<size_t> inElements; //UNUSED
+		std::set<size_t> inElements; 
 		Node(float x_, float y_, float z_,size_t id_) {
 			x = x_;
 			y = y_;
@@ -251,18 +251,24 @@ namespace Beams {
 		Node* node1;
 		Node* node2;
 		Node* node3; //cross section  orietnation
+		size_t node1Pos, node2Pos, node3Pos;
 
-
-		vBeam(int id_, Node& N1, Node& N2, Node& N3, size_t _sectionId, const Section& section):node1(&N1), node2(&N2), node3(&N3) {
+		vBeam(Eigen::Index id_, Node& N1, Node& N2, Node& N3, size_t _sectionId, const Section& section):node1(&N1), node2(&N2), node3(&N3) {
 			localBmatrix.resize(12, 12);
 			N1.free_flag = false;
 			N2.free_flag = false;
-
-			N1.inElements.insert(id);
-			N2.inElements.insert(id);
-			N3.inElements.insert(id);
-
 			id = id_;
+
+			N1.inElements.insert(static_cast<size_t>(id));
+			N2.inElements.insert(static_cast<size_t>(id));
+			N3.inElements.insert(static_cast<size_t>(id));
+
+			node1Pos = N1.pos;
+			node2Pos = N2.pos;
+			node3Pos = N3.pos;
+
+
+
 			sectionId = _sectionId;
 			calc_Len();
 
@@ -443,18 +449,29 @@ namespace Beams {
 
 		void removeNode(size_t pos) {//remove node from nth position
 			Node& nToRemove = Nodes[pos];
-			for (auto& element : Elements) {
-				if (std::find(Nodes[pos].inElements.begin(), Nodes[pos].inElements.end(), Nodes[pos].id) != Nodes[pos].inElements.end()) {
-					solved = false;
-					removeElement(element.getID());
-				}
-			}
 
 
 			for (size_t i = pos; i < Nodes.size(); i++) {//correct positions in the vector
 				Nodes[i].pos--;
+				
+
 			}
-			Nodes.erase(Nodes.begin() - pos);
+			//SOMETHING DOESNT WORK HERE
+			for (auto& element : Elements) {
+				if (std::find(Nodes[pos].inElements.begin(), Nodes[pos].inElements.end(), Nodes[pos].id) != Nodes[pos].inElements.end()) {
+					solved = false;
+					removeElement(element.getID());
+					continue;
+				}
+				size_t nPos = (element.node1Pos > pos) ? element.node1Pos-- : element.node1Pos;
+				element.node1 = &Nodes[nPos];
+				nPos = (element.node2Pos > pos) ? element.node2Pos-- : element.node2Pos;
+				element.node2 = &Nodes[nPos];
+				nPos = (element.node3Pos > pos) ? element.node3Pos-- : element.node3Pos;
+				element.node3 = &Nodes[nPos];
+
+			}
+			Nodes.erase(Nodes.begin() + pos);
 			//Points.erase(Points.begin() + pos); 
 			//Nodes.erase(Nodes.begin() + pos);
 		}
