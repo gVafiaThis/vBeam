@@ -173,8 +173,8 @@ namespace Beams {
 
 		};
 
-		void calc_Len() {
-			Len = std::pow((node2->x - node1->x), 2) + std::pow((node2->y - node1->y), 2) + std::pow((node2->z - node1->z), 2);
+		void calc_Len(Node& N2, Node& N1) {
+			Len = std::pow((N2.x - N1.x), 2) + std::pow((N2.y - N1.y), 2) + std::pow((N2.z - N1.z), 2);
 			Len = std::sqrt(Len);
 		};
 	
@@ -248,12 +248,14 @@ namespace Beams {
 
 
 	public:
-		Node* node1;
-		Node* node2;
-		Node* node3; //cross section  orietnation
+		//Node* node1;
+		//Node* node2;
+		//Node* node3; //cross section  orietnation
 		size_t node1Pos, node2Pos, node3Pos;
+		//Eigen::Index n1Id, n2Id, n3Id;
 
-		vBeam(Eigen::Index id_, Node& N1, Node& N2, Node& N3, size_t _sectionId, const Section& section):node1(&N1), node2(&N2), node3(&N3) {
+
+		vBeam(Eigen::Index id_, Node& N1, Node& N2, Node& N3, size_t _sectionId, const Section& section) {
 			localBmatrix.resize(12, 12);
 			N1.free_flag = false;
 			N2.free_flag = false;
@@ -270,13 +272,13 @@ namespace Beams {
 
 
 			sectionId = _sectionId;
-			calc_Len();
+			calc_Len(N2,N1);
 
 			calc_BMatrix(section);
 		};
 	
-		void reCalc(const Section& section) {
-			calc_Len();
+		void reCalc(std::vector<Node>& Nodes,const Section& section) {
+			calc_Len(Nodes[node2Pos], Nodes[node1Pos]);
 			calc_BMatrix(section);
 		}
 
@@ -288,15 +290,15 @@ namespace Beams {
 			return id;
 		}
 
-		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets, Section& section) {
+		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets,std::vector<Node>& Nodes ,Section& section) {
 			//using direction cosine matrix because reasons and it works also and no gimbal lock or whatever this stuff is 
 			static const Eigen::Vector3d xAxis(1, 0, 0);
 			static const Eigen::Vector3d yAxis(0, 1, 0);
 			static const Eigen::Vector3d zAxis(0, 0, 1);
 
 
-			Eigen::Vector3d localX_unit(node2->x - node1->x, node2->y - node1->y, node2->z - node1->z);
-			Eigen::Vector3d localY_unit(node3->x - node1->x, node3->y - node1->y, node3->z - node1->z);//a vector in XY local plane
+			Eigen::Vector3d localX_unit(Nodes[node2Pos].x - Nodes[node1Pos].x, Nodes[node2Pos].y - Nodes[node1Pos].y, Nodes[node2Pos].z - Nodes[node1Pos].z);
+			Eigen::Vector3d localY_unit(Nodes[node3Pos].x - Nodes[node1Pos].x, Nodes[node3Pos].y - Nodes[node1Pos].y, Nodes[node3Pos].z - Nodes[node1Pos].z);//a vector in XY local plane
 			Eigen::Vector3d localZ_unit;
 
 
@@ -345,8 +347,8 @@ namespace Beams {
 			std::cout << Eigen::MatrixXf(globalB);
 
 			//for (int k = 0; k < globalB.outerSize(); ++k)
-			Eigen::Index nid1 = node1->id;
-			Eigen::Index nid2 = node2->id;
+			Eigen::Index nid1 = Nodes[node1Pos].id;
+			Eigen::Index nid2 = Nodes[node2Pos].id;
 
 			for (int k = 0; k < 6; ++k)
 			{
@@ -428,23 +430,12 @@ namespace Beams {
 		void addNode(Point point) {
 			// I dont mind time spent here. 
 			//solved = false;
-			bool rePointElements = (Nodes.capacity() == Nodes.size())? true : false;
 			std::vector<size_t> elNodePos;
 			
-			for (auto& element : Elements) {
-				elNodePos.emplace_back(element.node1->pos);
-				elNodePos.emplace_back(element.node2->pos);
-				elNodePos.emplace_back(element.node3->pos);
-			}
 			
 			Nodes.emplace_back(point.x, point.y, point.z, Nodes.size());
 			Nodes.back().pos = Nodes.size() - 1;
-			if (!rePointElements) return;
-			for (size_t i = 0; i < Elements.size(); i++) {
-				Elements[i].node1 = &Nodes[elNodePos[i * 3]];
-				Elements[i].node2 = &Nodes[elNodePos[i * 3 + 1]];
-				Elements[i].node3 = &Nodes[elNodePos[i * 3+2]];
-			}
+			
 		}
 
 		void removeNode(size_t pos) {//remove node from nth position
@@ -456,7 +447,7 @@ namespace Beams {
 				
 
 			}
-			//SOMETHING DOESNT WORK HERE
+			
 			for (auto& element : Elements) {
 				if (std::find(Nodes[pos].inElements.begin(), Nodes[pos].inElements.end(), Nodes[pos].id) != Nodes[pos].inElements.end()) {
 					solved = false;
@@ -464,11 +455,8 @@ namespace Beams {
 					continue;
 				}
 				size_t nPos = (element.node1Pos > pos) ? element.node1Pos-- : element.node1Pos;
-				element.node1 = &Nodes[nPos];
 				nPos = (element.node2Pos > pos) ? element.node2Pos-- : element.node2Pos;
-				element.node2 = &Nodes[nPos];
 				nPos = (element.node3Pos > pos) ? element.node3Pos-- : element.node3Pos;
-				element.node3 = &Nodes[nPos];
 
 			}
 			Nodes.erase(Nodes.begin() + pos);
@@ -494,19 +482,23 @@ namespace Beams {
 		}
 
 		bool removeElement(Eigen::Index eId) {
+			//should do binary search here. Elements are ID sorted (ensure this 100% first)
 			size_t counter = 0;
 			for (counter = 0; counter < Elements.size(); counter++) {// E ti na kanw re file kakos tropos gia na ta kanw iterate. Binary Search?<----------------------------------;
 				vBeam& el = Elements[counter];
 				if (el.getID() == eId) {
 
-					std::set<size_t> &n1Els = Nodes[el.node1->pos].inElements;
-					std::set<size_t>& n2Els = Nodes[el.node2->pos].inElements;
-					
+					std::set<size_t> &n1Els = Nodes[el.node1Pos].inElements;
+					std::set<size_t>& n2Els = Nodes[el.node2Pos].inElements;
+					std::set<size_t>& n3Els = Nodes[el.node3Pos].inElements;
+
 					n1Els.erase(n1Els.find((size_t)eId));
 					n2Els.erase(n2Els.find((size_t)eId));
+					n3Els.erase(n3Els.find((size_t)eId));
 
-					if (n1Els.size() == 0)Nodes[el.node1->pos].free_flag = true;
-					if (n2Els.size() == 0)Nodes[el.node2->pos].free_flag = true;
+
+					if (n1Els.size() == 0)Nodes[el.node1Pos].free_flag = true;
+					if (n2Els.size() == 0)Nodes[el.node2Pos].free_flag = true;
 
 					Elements.erase(Elements.begin() + counter); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
 
@@ -632,7 +624,7 @@ namespace Beams {
 			//populate global stigness matrix triplets -- Helper (free) Elements (not beam nodes) must have last IDs for correct placement in the matrix
 			Eigen::SparseMatrix<float> testGlobAll(noDofs*10, noDofs*10);
 			for (auto& element : Elements) {
-				element.LocalMatrix2GlobalTriplets(globalK_triplets,Sections[element.getSectionId()]);
+				element.LocalMatrix2GlobalTriplets(globalK_triplets,Nodes,Sections[element.getSectionId()]);
 				testGlobAll.setFromTriplets(globalK_triplets.begin(),globalK_triplets.end());
 				//std::cout << "\nasdasdasdasdasdasdasd\nasd\nasd\n\n" << Eigen::MatrixXf(testGlobAll) << "\n" << std::endl; //SHOW GLOBAL MATRIX
 			}

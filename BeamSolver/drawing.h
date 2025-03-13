@@ -328,15 +328,15 @@ void runViewer(Beams::Model& model) {
 
         }
         for (auto& element : elements) {
-            Vector3 n1{ element.node1->x / 10,element.node1->y / 10,element.node1->z / 10 };
-            Vector3 n2{ element.node2->x / 10,element.node2->y / 10,element.node2->z / 10 };
+            Vector3 n1{ nodes[element.node1Pos].x / 10,nodes[element.node1Pos].y / 10,nodes[element.node1Pos].z / 10 };
+            Vector3 n2{ nodes[element.node2Pos].x / 10,nodes[element.node2Pos].y / 10,nodes[element.node2Pos].z / 10 };
             if (deformed) {
-                n1 += model.getDeflection(element.node1->id);
-                n2 += model.getDeflection(element.node2->id);
+                n1 += model.getDeflection(nodes[element.node1Pos].id);
+                n2 += model.getDeflection(nodes[element.node2Pos].id);
             }
             Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1,Vector3Subtract(n2, n1)/2), camera);
             char a[20];
-            sprintf_s(a, "%d | %d", (int)element.node1->id, (int)element.node2->id);
+            sprintf_s(a, "%d | %d", (int)nodes[element.node1Pos].id, (int)nodes[element.node2Pos].id);
             DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
         }
 			
@@ -345,11 +345,11 @@ void runViewer(Beams::Model& model) {
             RenderNodes(deformed,model, selectedNodes);
 
             for (auto& element : elements) {
-                Vector3 n1{ element.node1->x / 10,element.node1->y / 10,element.node1->z / 10 };
-                Vector3 n2{ element.node2->x / 10,element.node2->y / 10,element.node2->z / 10 };
+                Vector3 n1{ nodes[element.node1Pos].x / 10,nodes[element.node1Pos].y / 10,nodes[element.node1Pos].z / 10 };
+                Vector3 n2{ nodes[element.node2Pos].x / 10,nodes[element.node2Pos].y / 10,nodes[element.node2Pos].z / 10 };
                 if (deformed) {
-                    n1 += model.getDeflection(element.node1->id);
-                    n2 += model.getDeflection(element.node2->id);
+                    n1 += model.getDeflection(nodes[element.node1Pos].id);
+                    n2 += model.getDeflection(nodes[element.node2Pos].id);
                 }
                 DrawCapsule(n1,n2,0.1f,2,2,BLUE);
 
