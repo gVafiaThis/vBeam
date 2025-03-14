@@ -17,7 +17,7 @@
 #include "raylib.h"
 //float error tolerance
 #define ERR_TOLERANCE 0.000000001
-
+#define RENDER_SCALING_FACTOR 0.1
 
 namespace Beams {
 	using Point = Vector3;
@@ -25,7 +25,9 @@ namespace Beams {
 
 	struct Node {
 		float x, y, z;
-
+		float xRender;
+		float yRender;
+		float zRender;
 
 		Eigen::Index id; //for global matrix and DOFs use
 		int pos; //position of Coords in the points vector;
@@ -35,6 +37,11 @@ namespace Beams {
 			x = x_;
 			y = y_;
 			z = z_;
+
+			xRender = x_*RENDER_SCALING_FACTOR;
+			yRender = y_*RENDER_SCALING_FACTOR;
+			zRender = z_*RENDER_SCALING_FACTOR;
+
 			id = id_;
 		}
 		/*bool operator< (const Node  & v) {
@@ -424,7 +431,11 @@ namespace Beams {
 
 
 		bool solved = false;
-		
+		//Raygui does not render large positions well (thigns far away vanish,  probably because I dont use a custom shader). Thus I divide all deflection data /10
+		//Done here to only do it once and not every frame.
+		Eigen::SparseVector<float> Urender;
+		float scaleFactor = 1; //scale Happens Here As Well to do it once and not in every frame
+
 	public:
 		
 		void addNode(Point point) {
@@ -448,6 +459,8 @@ namespace Beams {
 
 			}
 			
+
+			std::vector<Eigen::Index> elementIdsToRemove;
 			for (auto& element : Elements) {
 				if (std::find(Nodes[pos].inElements.begin(), Nodes[pos].inElements.end(), Nodes[pos].id) != Nodes[pos].inElements.end()) {
 					solved = false;
@@ -459,6 +472,10 @@ namespace Beams {
 				nPos = (element.node3Pos > pos) ? element.node3Pos-- : element.node3Pos;
 
 			}
+			for (auto& id : elementIdsToRemove) {
+
+			}
+
 			Nodes.erase(Nodes.begin() + pos);
 			//Points.erase(Points.begin() + pos); 
 			//Nodes.erase(Nodes.begin() + pos);
@@ -626,23 +643,8 @@ namespace Beams {
 			for (auto& element : Elements) {
 				element.LocalMatrix2GlobalTriplets(globalK_triplets,Nodes,Sections[element.getSectionId()]);
 				testGlobAll.setFromTriplets(globalK_triplets.begin(),globalK_triplets.end());
-				//std::cout << "\nasdasdasdasdasdasdasd\nasd\nasd\n\n" << Eigen::MatrixXf(testGlobAll) << "\n" << std::endl; //SHOW GLOBAL MATRIX
 			}
 			
-			/*globalF_triplets.clear();
-			F.resize(6 * noDofs);
-			for (auto& force : Forces) {
-				size_t id = force.first;
-				std::array<float,6>& forceArr = force.second;
-				globalF_triplets.emplace_back(id * 6    ,0, forceArr[0] );
-				globalF_triplets.emplace_back(id * 6 + 1,0, forceArr[1]);
-				globalF_triplets.emplace_back(id * 6 + 2,0, forceArr[2]);
-				globalF_triplets.emplace_back(id * 6 + 3,0, forceArr[3]);
-				globalF_triplets.emplace_back(id * 6 + 4,0, forceArr[4]);
-				globalF_triplets.emplace_back(id * 6 + 5,0, forceArr[5]);
-
-			}*/
-
 
 			noDofs = 6 * (noDofs - BCfixed.size()) - 3 * BCpinned.size();
 			Eigen::SparseMatrix<float> globMatr(noDofs, noDofs);
@@ -671,26 +673,9 @@ namespace Beams {
 			}
 
 
-			/*std::vector<Eigen::Triplet<float>> Ftriplets_AfterBCs;
-
-			for (auto& triplet : globalF_triplets) {
-				col = triplet.col(); val = triplet.value();
-
-				for (size_t fixBCid : BCfixed) {
-					if (col < fixBCid * 6) {
-						Ftriplets_AfterBCs.emplace_back(row, col, val);
-					}
-					else if (col > fixBCid * 6 + 5) {
-						Ftriplets_AfterBCs.emplace_back(row, col - 6, val);
-					}
-				}
-			}*/
-
-
 			//Populate globMatrix matrix from triplets
 			globMatr.setFromTriplets(triplets_AfterBCs.begin(), triplets_AfterBCs.end());
-			std::cout << Eigen::MatrixXf(globMatr)<<std::endl;
-
+			//std::cout << Eigen::MatrixXf(globMatr)<<std::endl;
 			F.resize(globMatr.rows());
 			
 
@@ -711,7 +696,6 @@ namespace Beams {
 
 			}
 			std::cout << "\n" << F << "\n";
-			//F.insert(19) = 100;
 
 			
 
@@ -730,12 +714,16 @@ namespace Beams {
 				std::cout << "Sparse Solving Successful\n";
 				solved = true;
 				std::cout << U;
+				Urender = U * 0.1 * scaleFactor;
+
 				return;
 			}
 			std::cout << "Sparse LU decomposition failed\nConverting to Dense\n";
 			Eigen::MatrixXf A(globMatr);                       // DO EXCEPTION HERE if this fails Also
-			U = A.lu().solve(Eigen::VectorXf(F)).sparseView();
+			U = A.lu().solve(Eigen::VectorXf(F)).sparseView(); 
 			std::cout << F <<"\n" << A << "\n" << U;
+			Urender.resize(U.rows());
+			Urender = U * RENDER_SCALING_FACTOR * scaleFactor;
 			solved = true;
 			
 		}
@@ -757,21 +745,30 @@ namespace Beams {
 				else if (fixedId == nodeId) return Vector3Zero();
 			}
 			size_t afterBcId= nodeId * 6 - fixedNodesBefore * 6;
+			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
+
 
 			return Vector3{ U.coeff(afterBcId),U.coeff(afterBcId + 1),U.coeff(afterBcId + 2) };
 
 		}
 
+		Vector3 getDeflectionRender(size_t nodeId) {
+			if (!solved) return Vector3Zero();
+
+			size_t fixedNodesBefore = 0;
+			for (size_t fixedId : BCfixed) {
+				if (fixedId < nodeId) fixedNodesBefore++;
+				else if (fixedId == nodeId) return Vector3Zero();
+			}
+			size_t afterBcId = nodeId * 6 - fixedNodesBefore * 6;
+			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
+
+
+			return Vector3{ Urender.coeff(afterBcId) ,Urender.coeff(afterBcId + 1) ,Urender.coeff(afterBcId + 2)  };
+
+		}
+
 		Point getForce(size_t nodeId) {
-			//DEPRICATED
-			//size_t fixedNodesBefore = 0;
-			//for (size_t fixedId : BCfixed) {
-			//	if (fixedId < nodeId) fixedNodesBefore++;
-			//	else if (fixedId == nodeId) return Vector3Zero();
-			//}
-			//size_t afterBcId = nodeId * 6 - fixedNodesBefore * 6
-			//if (afterBcId + 2 > F.rows()) return Vector3Zero(); //Out of solved bounds. Free element. 
-			//return Vector3{ F.coeff(afterBcId),F.coeff(afterBcId + 1),F.coeff(afterBcId + 2) };
 			auto it = Forces.find(nodeId);
 			
 			if (it == Forces.end()) return Vector3Zero();
