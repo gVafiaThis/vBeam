@@ -253,18 +253,6 @@ namespace {
 
 
 
-
-//class NodeMap2vector {
-//    std::map <Vector3, size_t> nodeMap;
-//    std::vector<size_t> removedIds;
-//    
-//
-//    size_t getId(Vector3 input) {
-//        size_t foundId = nodeMap.find(input);
-//    }
-//};
-
-
 void CameraControls(Vector3& rotCenter, Camera3D& camera, const BoundingBox& objectsBoundBox);
 
 void SetupScene(Camera3D& camera);
@@ -286,6 +274,7 @@ void runViewer(Beams::Model& model) {
     SetupScene(camera);
     
     //TODO: All node iterations ONCE. (worst case one time for inputs, one time for render) 
+    
     while (!WindowShouldClose())		// run the loop untill the user presses ESCAPE or presses the Close button on the window
     {
         static std::vector<size_t> selectedNodes;
@@ -343,7 +332,7 @@ void runViewer(Beams::Model& model) {
 
                     nodeCoords += model.getDeflectionRender(node.id);
                 }
-                //DrawSphere(nodeCoords, 0.15f, RED);
+                
                 Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
                 char a[20];
                 sprintf_s(a, "ID %d", (int)node.id);
@@ -371,16 +360,19 @@ void runViewer(Beams::Model& model) {
                 Vector3 n1{ nodes[element.node1Pos].xRender,nodes[element.node1Pos].yRender,nodes[element.node1Pos].zRender };
                 Vector3 n2{ nodes[element.node2Pos].xRender,nodes[element.node2Pos].yRender,nodes[element.node2Pos].zRender };
 
-                if (nodeSectionEl == 1) DrawSphere(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)),0.15f,BLUE);
-                for (size_t pos : selectedElems) {
-                    DrawSphereWires(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)), 0.2, 5, 5, DARKGREEN);
-                }
-                
                 if (deformed) {
                     n1 += model.getDeflectionRender(nodes[element.node1Pos].id);
                     n2 += model.getDeflectionRender(nodes[element.node2Pos].id);
                 }
+                
+                if (nodeSectionEl == 1) DrawSphere(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)),0.15f,BLUE);
                 DrawCapsule(n1,n2,0.1f,2,2,BLUE);
+            }
+
+            for (size_t pos : selectedElems) {
+                Vector3 n1{ nodes[elements[pos].node1Pos].xRender,nodes[elements[pos].node1Pos].yRender,nodes[elements[pos].node1Pos].zRender };
+                Vector3 n2{ nodes[elements[pos].node2Pos].xRender,nodes[elements[pos].node2Pos].yRender,nodes[elements[pos].node2Pos].zRender };
+                DrawSphereWires(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)), 0.2, 5, 5, DARKGREEN);
             }
             
             RenderNodes(deformed,model, selectedNodes);
@@ -392,6 +384,7 @@ void runViewer(Beams::Model& model) {
 
         //Check all possible UI states that require controls lock
         //if (splineTypeEditMode || (selectedPoint != -1) || (selectedControlPoint != NULL)) GuiLock();
+        //TODO: This with flags? ENUM and bitwise thing
         static bool dropdownEdit = false;
         static bool NodeAddActive = false;
         static bool NodeRemoveActive = false;
@@ -437,6 +430,7 @@ void runViewer(Beams::Model& model) {
                 NodeAddActive = false;
                 elAddActive = false;
                 elRemoveActive = false;
+                deformed = false;
 
                 static bool toggleActive = false;
                 NodeRemoveActive = !GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveNode");
@@ -457,6 +451,8 @@ void runViewer(Beams::Model& model) {
             NodeAddActive = false;
             NodeRemoveActive = false;
             elRemoveActive = false;
+            deformed = false;
+
             PickNodes_ForElement(camera, pickingNodesForElems, nodes, selectedNodes, model);
             DrawText("Pick Nodes While Holding Shift", 400, 200, 20, RED);
             
@@ -467,6 +463,7 @@ void runViewer(Beams::Model& model) {
                 NodeAddActive = false;
                 NodeRemoveActive = false;
                 elAddActive = false;
+                deformed = false;
 
                 static bool toggleActive = false;
                 elRemoveActive = !GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveElement");
@@ -506,8 +503,12 @@ void runViewer(Beams::Model& model) {
         }
         if (nodeSectionEl == 1) {  
             GuiToggle(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD", & elAddActive);
-            GuiToggle(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "INFO", & showElemInfo);
-
+            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+                NodeRemoveActive = false;
+                NodeAddActive = false;
+                elRemoveActive = true;
+            }
+            GuiToggle(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO", & showElemInfo);
         }
 
 
@@ -559,7 +560,6 @@ bool PickNode(const Camera3D& camera, const std::vector<Beams::Node>& nodes, std
             Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
             collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
             if (collision.hit) {
-                //selectedNodes.push_back(i)0
                 auto it = std::find(selectedNodes.begin(), selectedNodes.end(), i);
                 if (it != selectedNodes.end()) selectedNodes.erase(it);
                 return true;
@@ -579,7 +579,7 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
             Vector3 n2{ model.getNodes()[elements[i].node2Pos].xRender,model.getNodes()[elements[i].node2Pos].yRender,model.getNodes()[elements[i].node2Pos].zRender };
            
 
-            Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n1, n2) / 2));
+            Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
             collision = GetRayCollisionSphere(ray, elemCenter, 0.15f);
             if (collision.hit) {
                 selectedElems.push_back(i);
@@ -597,10 +597,9 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
             Vector3 n2{ model.getNodes()[elements[i].node2Pos].xRender,model.getNodes()[elements[i].node2Pos].yRender,model.getNodes()[elements[i].node2Pos].zRender };
 
 
-            Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n1, n2) / 2));
+            Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
             collision = GetRayCollisionSphere(ray, elemCenter, 0.15f);
             if (collision.hit) {
-                //selectedNodes.push_back(i)0
                 auto it = std::find(selectedElems.begin(), selectedElems.end(), i);
                 if (it != selectedElems.end()) selectedElems.erase(it);
                 return true;
@@ -683,24 +682,22 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
     for (auto& node : nodes) {
         Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender  };
         
-        if (node.free_flag) { 
+        /*if (node.free_flag) { 
             DrawSphere(nodeCoords, 0.15f, RED);
             continue; 
-        }
+        }*/
 
         if (deformed) {
             nodeCoords += model.getDeflectionRender(node.id);
         }
         DrawSphere(nodeCoords, 0.15f, RED);
 
-        Vector3 force = model.getForce(node.id); //moronic func, remaining from before it was like this.
+        Vector3 force = model.getForce(node.id); 
         force = Vector3Normalize(force);
         Vector3 forceEndpoint = Vector3Add(nodeCoords, force);
         if (force.x  + force.y + force.z > 0.001) {
             DrawLine3D(nodeCoords, forceEndpoint  , DARKBROWN);
             DrawCylinderEx(Vector3Add(nodeCoords, force / 2), forceEndpoint, 0.1f, 0.0f, 10, DARKBROWN);
-            //DrawLine3D(nodeCoords, Vector3Subtract(nodeCoords, force), YELLOW);
-
         }
         
         

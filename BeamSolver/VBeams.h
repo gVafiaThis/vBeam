@@ -112,7 +112,7 @@ namespace Beams {
 		//make properties for common stifness matrices
 		size_t sectionId;
 		
-
+		//TODO: CHECK THAT MATRIX COMPUTES CORRECTLY
 		void calc_BMatrixTEST() { 
 			float Area = 100;
 			float Izz = 100;
@@ -277,7 +277,6 @@ namespace Beams {
 			node3Pos = N3.pos;
 
 
-
 			sectionId = _sectionId;
 			calc_Len(N2,N1);
 
@@ -416,7 +415,6 @@ namespace Beams {
 		Eigen::SparseVector<float> U, F;
 		
 		std::vector<Node> Nodes;
-		std::map<Point,size_t> pointMap;//Unfortunately, Duplicate. 
 
 		std::vector<Section> Sections;
 
@@ -424,6 +422,8 @@ namespace Beams {
 		//std::vector <std::ptrdiff_t> Element_Nids;
 		std::vector<vBeam> Elements;
 		Eigen::Index eId_Last = 0;
+		//TODO: IDsorted Els and IDsorted Nodes.
+
 
 		std::vector<size_t> BCpinned;//UNUSED- and going to be unused.
 		std::vector<size_t> BCfixed;
@@ -498,8 +498,8 @@ namespace Beams {
 			return true;
 		}
 
-		bool removeElement(Eigen::Index eId) {
-			//should do binary search here. Elements are ID sorted (ensure this 100% first)
+		bool removeElementId(Eigen::Index eId) {
+			//TODO: should do binary search here. Elements are ID sorted (ensure this 100% first)
 			size_t counter = 0;
 			for (counter = 0; counter < Elements.size(); counter++) {// E ti na kanw re file kakos tropos gia na ta kanw iterate. Binary Search?<----------------------------------;
 				vBeam& el = Elements[counter];
@@ -520,10 +520,38 @@ namespace Beams {
 					Elements.erase(Elements.begin() + counter); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
 
 					//break;
+					solved = false;
 					return true;
 				}
 			}
 			return false;
+		}
+
+		bool removeElement(size_t ePos) {
+			if (ePos > Elements.size()) return false;
+
+			vBeam& el = Elements[ePos];
+			
+			solved = false;
+
+			std::set<size_t>& n1Els = Nodes[el.node1Pos].inElements;
+			std::set<size_t>& n2Els = Nodes[el.node2Pos].inElements;
+			std::set<size_t>& n3Els = Nodes[el.node3Pos].inElements;
+
+			n1Els.erase(n1Els.find(el.getID()));
+			n2Els.erase(n2Els.find(el.getID()));
+			n3Els.erase(n3Els.find(el.getID()));
+
+
+			if (n1Els.size() == 0)Nodes[el.node1Pos].free_flag = true;
+			if (n2Els.size() == 0)Nodes[el.node2Pos].free_flag = true;
+
+			Elements.erase(Elements.begin() + ePos); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
+
+			//break;
+			return true;
+			
+
 		}
 
 		void oneElementTest() {
@@ -687,6 +715,8 @@ namespace Beams {
 				for (size_t BCid : BCfixed) {
 					forceMatrixPos = (BCid < forceMatrixPos) ? forceMatrixPos - 6 : forceMatrixPos;
 				}
+				if (forceMatrixPos >= F.rows()) continue;
+
 				F.insert((Eigen::Index)forceMatrixPos) = force.second[0];
 				F.insert((Eigen::Index)forceMatrixPos+1) = force.second[1];
 				F.insert((Eigen::Index)forceMatrixPos + 2) = force.second[2];
