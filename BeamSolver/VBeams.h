@@ -35,7 +35,7 @@ namespace Beams {
 		
 		int pos; //position of Coords in the points vector;
 
-		bool free_flag = true; //DOFs not used in solving
+		bool free_flag = true; //DOFs not used in stifness matrix
 		std::set<Eigen::Index> inElements;
 		Node(float x_, float y_, float z_, size_t id_) {
 			x = x_;
@@ -74,7 +74,6 @@ namespace Beams {
 
 	class NodeContainer {
 		std::vector<Node> Nodes;
-		size_t nextId = 0;
 		std::set<size_t> deleted;
 
 
@@ -97,15 +96,16 @@ namespace Beams {
 				Nodes[pos].x = point.x;
 				Nodes[pos].y = point.y;
 				Nodes[pos].z = point.z;
-				Nodes[pos].matrixPos = nextId;
-				nextId++;
+				Nodes[pos].matrixPos = -1;
+				Nodes[pos].free_flag= true; //extra safety
+
 				deleted.erase(firstIt);
 				return;
 			}
 
-			Nodes.emplace_back(point.x, point.y, point.z, nextId);
+			Nodes.emplace_back(point.x, point.y, point.z, -1);
 			Nodes.back().pos = Nodes.size() - 1;
-			nextId++;
+
 
 			return;
 
@@ -164,8 +164,12 @@ namespace Beams {
 		}
 
 
-		void setId(size_t pos, Eigen::Index id) {
-			get_NotDeleted(pos).matrixPos = id;
+		void setMatrixPos(size_t pos, Eigen::Index matPos) {
+			get_NotDeleted(pos).matrixPos = matPos;
+		}
+
+		void setMatrixPos_fromAll(size_t pos, Eigen::Index matPos) {
+			Nodes[pos].matrixPos = matPos;
 		}
 
 	};
@@ -459,7 +463,7 @@ namespace Beams {
 			cosMatrix.setFromTriplets(dirCosineMat_triplets.begin(), dirCosineMat_triplets.end());
 
 			Eigen::SparseMatrix<float> globalB = cosMatrix * localBmatrix * (cosMatrix.transpose());
-			std::cout << Eigen::MatrixXf(globalB);
+			//std::cout << Eigen::MatrixXf(globalB);
 
 			Eigen::Index nid1 = Nodes.get_fromAll(node1Pos).matrixPos;
 			Eigen::Index nid2 = Nodes.get_fromAll(node2Pos).matrixPos;
@@ -531,11 +535,13 @@ namespace Beams {
 		Eigen::Index eId_Last = 0;
 		//TODO: IDsorted Els and IDsorted Nodes for quick lookup.
 
+		std::vector<size_t> nodes_InMatrixOrder;
 
 		std::vector<size_t> BCpinned;//UNUSED- and going to be unused.
 		std::vector<size_t> BCfixed;
 		std::map<size_t, std::array<float, 6>> Forces;
 
+		size_t noDofs = 0;
 
 		bool solved = false;
 		//Raygui does not render large positions well (thigns far away vanish,  probably because I dont use a custom shader). Thus I divide all deflection data /10
@@ -548,6 +554,7 @@ namespace Beams {
 		void addNode(Vector3& point) {
 			Nodes.emplace(point);
 		}
+
 		void addNode(Vector3 point) {
 			Nodes.emplace(point);
 		}
@@ -557,39 +564,66 @@ namespace Beams {
 		void removeNode(size_t pos) {
 			const Node& node =  Nodes.get(pos);
 
+			size_t elPos = 0;
+			std::set<size_t> toRemove;//we will remove from end to beginning. 
 			for (auto& element : Elements) {//iterate elements only once. TODO: change with removeElementId when you do binary search
 				if (std::find(node.inElements.begin(), node.inElements.end(), element.getID()) != node.inElements.end()) {
-					Nodes.remove_InElement_fromAll(element.node1Pos,element.getID());
-					Nodes.remove_InElement_fromAll(element.node2Pos, element.getID());
-					Nodes.remove_InElement_fromAll(element.node3Pos, element.getID());
+					toRemove.insert(elPos);
+
 				}
+				elPos++;
+			}
+			for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); rit++) {
+				removeElement(*rit);
 			}
 
+			auto it = Forces.find(pos);
+			if (it != Forces.end()) {
+				Forces.erase(it);
+			}
 
 			Nodes.remove(pos);	
 		}
 
-		bool addElement(size_t n1, size_t n2, size_t n3, size_t sectionID) {
+		bool addElement(size_t n1Pos, size_t n2Pos, size_t n3Pos, size_t sectionID) {
 
 			if (Sections.size() - 1 < sectionID) return false;
 			solved = false;
 
 
-			F.resize(F.size() + ((int)Nodes.getFree_fromAll(n1) + (int)Nodes.getFree_fromAll(n2)) * 6);//free nodes about to be in element add 6 Dofs to F
+			Elements.emplace_back(eId_Last, Nodes.get_fromAll(n1Pos), Nodes.get_fromAll(n2Pos), Nodes.get_fromAll(n3Pos), sectionID, Sections[sectionID]);
 
-			Elements.emplace_back(eId_Last, Nodes.get_fromAll(n1), Nodes.get_fromAll(n2), Nodes.get_fromAll(n3), sectionID, Sections[sectionID]);
-			Nodes.add_InElement_fromAll(n1, eId_Last);
-			Nodes.add_InElement_fromAll(n2, eId_Last);
-			Nodes.add_InElement_fromAll(n3, eId_Last);
-			Nodes.setFree_fromAll(n1, false);
-			Nodes.setFree_fromAll(n2, false);
 
+			//get whether the element's nodes were not used in the stifness matrix
+			bool n1Free = Nodes.getFree_fromAll(n1Pos);
+			bool n2Free = Nodes.getFree_fromAll(n2Pos);
+
+
+			//ADD DOFs to problem
+			noDofs += ((int)n1Free + (int)n2Free) * 6;
+
+			//Set Node positions in the stifness matrix
+			if (n1Free) {//it goes in the back of the matrix order
+				Nodes.setMatrixPos_fromAll(n1Pos, nodes_InMatrixOrder.size());
+				nodes_InMatrixOrder.push_back(n1Pos);
+			}
+			if (n2Free) {//it goes in the back of the matrix order
+				Nodes.setMatrixPos_fromAll(n2Pos, nodes_InMatrixOrder.size());
+				nodes_InMatrixOrder.push_back(n2Pos);
+			}
+
+			//Update Nodes that are part of Element
+			Nodes.add_InElement_fromAll(n1Pos, eId_Last);
+			Nodes.add_InElement_fromAll(n2Pos, eId_Last);
+			Nodes.add_InElement_fromAll(n3Pos, eId_Last);
+			Nodes.setFree_fromAll(n1Pos, false);
+			Nodes.setFree_fromAll(n2Pos, false);
 
 			eId_Last++;
 			return true;
 		}
 
-		bool removeElementId(Eigen::Index eId) {
+		bool removeElementId(Eigen::Index eId) {//UNUSED
 			//TODO: should do binary search here. Elements are ID sorted (ensure this 100% first)
 			size_t counter = 0;
 			for (counter = 0; counter < Elements.size(); counter++) {// E ti na kanw re file kakos tropos gia na ta kanw iterate. Binary Search?<----------------------------------;
@@ -623,9 +657,29 @@ namespace Beams {
 			Nodes.remove_InElement_fromAll(el.node2Pos, eId);
 			Nodes.remove_InElement_fromAll(el.node3Pos, eId);
 
-			Elements.erase(Elements.begin() + ePos); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
 
-			//break;
+			//Housekeeping for node DOFs order. 
+			const Node& n1 = Nodes.get_fromAll(el.node1Pos);
+			if (n1.free_flag) {//it became free now
+				for (size_t i = n1.matrixPos+1; i < nodes_InMatrixOrder.size(); i++) {
+					size_t nextNodePos = nodes_InMatrixOrder[i];
+					Nodes.setMatrixPos_fromAll(nextNodePos,Nodes.get_fromAll(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+				}
+				noDofs -= 6;
+			}
+			const Node& n2 = Nodes.get_fromAll(el.node2Pos);
+			if (n2.free_flag) {//it became free now
+				for (size_t i = n2.matrixPos + 1; i < nodes_InMatrixOrder.size(); i++) {
+					size_t nextNodePos = nodes_InMatrixOrder[i];
+					Nodes.setMatrixPos_fromAll(nextNodePos, Nodes.get_fromAll(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+				}
+				noDofs -= 6;
+			}
+
+
+
+			Elements.erase(Elements.begin() + ePos); 
+
 			return true;
 
 
@@ -663,6 +717,10 @@ namespace Beams {
 		}
 
 		void addForce(size_t nodePos, size_t Dof, float val) {
+			std::array<float,6> ar{ 0,0,0,0,0,0 };
+			auto it = Forces.emplace(std::make_pair(nodePos, ar));
+			it.first->second[Dof] = val;
+			
 
 		}
 
@@ -677,50 +735,52 @@ namespace Beams {
 
 
 			//find problem DOFs and Make unused nodes last. Initialize globMatrix.
-			size_t noDofs = 0;
-			size_t foundUnused = 0;
-			size_t lastID = 0;
+			//size_t noDofs = 0;
+			//size_t foundUnused = 0;
+			//size_t lastID = 0;
 
-			std::vector<size_t> nodes_IdOrder(Nodes.size());
-			std::iota(nodes_IdOrder.begin(), nodes_IdOrder.end(), 0);
+			//std::vector<size_t> nodes_IdOrder(Nodes.size());
+			//std::iota(nodes_IdOrder.begin(), nodes_IdOrder.end(), 0);
 
 
-			//Bubble Sort Nodes Based on IDs. 
-			bool hasSwapped = true;
-			size_t lastUnsorted = Nodes.size();
-			while (hasSwapped) {
-				hasSwapped = false;
-				for (int i = 0; i < lastUnsorted - 1; i++) {
-					if (Nodes.get(nodes_IdOrder[i]).matrixPos > Nodes.get(nodes_IdOrder[i + 1]).matrixPos) {
-						size_t large = nodes_IdOrder[i];
-						nodes_IdOrder[i] = nodes_IdOrder[i + 1];
-						nodes_IdOrder[i + 1] = large;
-						hasSwapped = true;
-					}
-				}
-				lastUnsorted--;
-			}
+			////Bubble Sort Nodes Based on IDs. 
+			//bool hasSwapped = true;
+			//size_t lastUnsorted = Nodes.size();
+			//while (hasSwapped) {
+			//	hasSwapped = false;
+			//	for (int i = 0; i < lastUnsorted - 1; i++) {
+			//		if (Nodes.get(nodes_IdOrder[i]).matrixPos > Nodes.get(nodes_IdOrder[i + 1]).matrixPos) {
+			//			size_t large = nodes_IdOrder[i];
+			//			nodes_IdOrder[i] = nodes_IdOrder[i + 1];
+			//			nodes_IdOrder[i + 1] = large;
+			//			hasSwapped = true;
+			//		}
+			//	}
+			//	lastUnsorted--;
+			//}
 
 			//ON SORTED BY IDs ARRAY, put free nodes last.
-			for (auto& pos : nodes_IdOrder) {
-				const Node& node = Nodes.get(pos);
-				//ensure no gaps in Ids. not sure for this 
-				if (node.matrixPos - lastID > 1) {
-					foundUnused++;
-				}
-				lastID = node.matrixPos;
+			//for (auto& pos : nodes_InMatrixOrder) {
+			//	const Node& node = Nodes.get(pos);
+			//	//ensure no gaps in Ids. not sure for this 
+			//	if (node.matrixPos - lastID > 1) {
+			//		foundUnused++;
+			//	}
+			//	lastID = node.matrixPos;
 
-				if (!node.free_flag) {
-					Nodes.setId(node.pos ,node.matrixPos - foundUnused);
-					noDofs++;
-				}
-				else {
-					Nodes.setId(node.pos ,Nodes.size() - 1 - foundUnused);//unused nodes go above other unused nodes in the end 
-					foundUnused++;
+			//	if (!node.free_flag) {
+			//		Nodes.setMatrixPos(node.pos ,node.matrixPos - foundUnused);
+			//		noDofs++;
+			//	}
+			//	else {
+			//		Nodes.setMatrixPos(node.pos ,Nodes.size() - 1 - foundUnused);//unused nodes go above other unused nodes in the end 
+			//		foundUnused++;
 
-				}
-			}
-
+			//	}
+			//}
+			
+			
+			//MATRIX POSITIONS ARE ALREADY SET FOR ALL USABLE NODES
 
 
 			if (noDofs < 1) return;
@@ -731,7 +791,7 @@ namespace Beams {
 
 			//populate global stigness matrix triplets -- Helper (free) Elements (not beam nodes) must have last IDs for correct placement in the matrix
 #ifdef DEBUG_PRINTS
-			Eigen::SparseMatrix<float> testGlobAll(noDofs * 10, noDofs * 10);
+			Eigen::SparseMatrix<float> testGlobAll(noDofs, noDofs);
 #endif
 
 			for (auto& element : Elements) {
@@ -744,11 +804,11 @@ namespace Beams {
 			}
 
 #ifdef DEBUG_PRINTS
-			std::cout << "\n------------------------------------\n Glob Matrix noRowDeletion:\n " << Eigen::MatrixXf(testGlobAll) << "\n";
+				std::cout << "\n------------------------------------\n Glob Matrix noRowDeletion:\n " << Eigen::MatrixXf(testGlobAll) << "\n";
 #endif // DEBUG_PRINTS
 
-			noDofs = 6 * (noDofs - BCfixed.size()) - 3 * BCpinned.size();
-			Eigen::SparseMatrix<float> globMatr(noDofs, noDofs);
+			size_t noDofsUsed = noDofs- 6 * (BCfixed.size()) - 3 * BCpinned.size();
+			Eigen::SparseMatrix<float> globMatr(noDofsUsed, noDofsUsed);
 
 
 			//remove rows and columns from BCs
@@ -864,8 +924,14 @@ namespace Beams {
 
 		}
 
-		Vector3 getDeflectionRender(size_t nodeMatrixPos) {
+		Vector3 getDeflectionRender(size_t nodeMatrixPos) {//doesn't give rotations. 
 			if (!solved) return Vector3Zero();
+
+			//if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
+			if (nodeMatrixPos >= nodes_InMatrixOrder.size()) return Vector3Zero();//not in stifness matrix
+			const Node& node = Nodes.get_fromAll(nodes_InMatrixOrder[nodeMatrixPos]);
+
+			if (node.free_flag) return Vector3Zero();
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
@@ -873,20 +939,16 @@ namespace Beams {
 				else if (fixedId == nodeMatrixPos) return Vector3Zero();
 			}
 			size_t afterBcId = nodeMatrixPos * 6 - fixedNodesBefore * 6;
-			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
-
 
 			return Vector3{ Urender.coeff(afterBcId) ,Urender.coeff(afterBcId + 1) ,Urender.coeff(afterBcId + 2) };
 
 		}
 
-		Vector3 getForce(size_t nodeMatrixPos) {
+		Vector3 getForce(size_t nodeMatrixPos) {//To be deprecated
 			auto it = Forces.find(nodeMatrixPos);
 
 			if (it == Forces.end()) return Vector3Zero();
 			return Vector3{ it->second[0],it->second[1],it->second[2] };
-
-
 		}
 
 		void printDeformed() {
