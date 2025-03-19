@@ -254,15 +254,10 @@ namespace {
 
 
 void CameraControls(Vector3& rotCenter, Camera3D& camera, const BoundingBox& objectsBoundBox);
-
 void SetupScene(Camera3D& camera);
-
 void RenderNodes(bool deformed,Beams::Model model, std::vector<size_t>& selected);
-
-void PickNodes_ForElement(const Camera3D& camera, size_t& pickingNodesForElems, const std::vector<Beams::Node>& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model);
-
-bool PickNode(const Camera3D& camera, const std::vector<Beams::Node>& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model);
-
+//void PickNodes_ForElement(const Camera3D& camera, size_t& pickingNodesForElems, const std::vector<Beams::Node>& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model);
+bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model);
 bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elems, std::vector<size_t>& selectedElems, Beams::Model& model);
 
 void runViewer(Beams::Model& model) {
@@ -292,11 +287,18 @@ void runViewer(Beams::Model& model) {
 
         CameraControls(rotCenter, camera, objectsBoundBox);
 
+        const Beams::NodeContainer& nodes = model.getNodes();
+        size_t nodeSize = nodes.size();
 
-        auto& nodes = model.getNodes();
+
+
+
+
+
         if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE)) {
             Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            for (auto& node : nodes) {
+            for (size_t i = 0; i < nodeSize; i++) {
+                const Beams::Node& node = nodes.get(i);
                 Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
                 RayCollision collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
                 if (collision.hit) {
@@ -318,38 +320,42 @@ void runViewer(Beams::Model& model) {
             pickNodesActive = false;
         }
 
-
 		// drawing
 		BeginDrawing();
 		// Setup the back buffer for drawing (clear color and depth buffers)
 		ClearBackground(RAYWHITE);
 
         if (showNodeInfo) {
-            for (auto& node : nodes) {
+            for (size_t i = 0; i < nodeSize; i++) {
+                const Beams::Node& node = nodes.get(i);
                 Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
                 
                 if (deformed) {
 
-                    nodeCoords += model.getDeflectionRender(node.id);
+                    nodeCoords += model.getDeflectionRender(node.matrixPos);
                 }
                 
                 Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
                 char a[20];
-                sprintf_s(a, "ID %d", (int)node.id);
+                sprintf_s(a, "ID %d", (int)node.matrixPos);
                 DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
             }
         }
         if (showElemInfo) {
             for (auto& element : elements) {
-                Vector3 n1{ nodes[element.node1Pos].xRender,nodes[element.node1Pos].yRender,nodes[element.node1Pos].zRender };
-                Vector3 n2{ nodes[element.node2Pos].xRender,nodes[element.node2Pos].yRender,nodes[element.node2Pos].zRender };
+                const Beams::Node& node1 = nodes.get_fromAll(element.node1Pos);
+                const Beams::Node& node2 = nodes.get_fromAll(element.node2Pos);
+
+
+                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
                 if (deformed) {
-                    n1 += model.getDeflectionRender(nodes[element.node1Pos].id);
-                    n2 += model.getDeflectionRender(nodes[element.node2Pos].id);
+                    n1 += model.getDeflectionRender(node1.matrixPos);
+                    n2 += model.getDeflectionRender(node2.matrixPos);
                 }
                 Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
                 char a[20];
-                sprintf_s(a, "NIDs %d | %d", (int)nodes[element.node1Pos].id, (int)nodes[element.node2Pos].id);
+                sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
                 DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
             }
         }
@@ -357,12 +363,15 @@ void runViewer(Beams::Model& model) {
 				
 
             for (auto& element : elements) {
-                Vector3 n1{ nodes[element.node1Pos].xRender,nodes[element.node1Pos].yRender,nodes[element.node1Pos].zRender };
-                Vector3 n2{ nodes[element.node2Pos].xRender,nodes[element.node2Pos].yRender,nodes[element.node2Pos].zRender };
+                const Beams::Node& node1 = nodes.get_fromAll(element.node1Pos);
+                const Beams::Node& node2 = nodes.get_fromAll(element.node2Pos);
+
+                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
 
                 if (deformed) {
-                    n1 += model.getDeflectionRender(nodes[element.node1Pos].id);
-                    n2 += model.getDeflectionRender(nodes[element.node2Pos].id);
+                    n1 += model.getDeflectionRender(node1.matrixPos);
+                    n2 += model.getDeflectionRender(node2.matrixPos);
                 }
                 
                 if (nodeSectionEl == 1) DrawSphere(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)),0.15f,BLUE);
@@ -370,8 +379,11 @@ void runViewer(Beams::Model& model) {
             }
 
             for (size_t pos : selectedElems) {
-                Vector3 n1{ nodes[elements[pos].node1Pos].xRender,nodes[elements[pos].node1Pos].yRender,nodes[elements[pos].node1Pos].zRender };
-                Vector3 n2{ nodes[elements[pos].node2Pos].xRender,nodes[elements[pos].node2Pos].yRender,nodes[elements[pos].node2Pos].zRender };
+                const Beams::Node& node1 = nodes.get_fromAll(elements[pos].node1Pos);
+                const Beams::Node& node2 = nodes.get_fromAll(elements[pos].node2Pos);
+
+                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
                 DrawSphereWires(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)), 0.2, 5, 5, DARKGREEN);
             }
             
@@ -453,7 +465,7 @@ void runViewer(Beams::Model& model) {
             elRemoveActive = false;
             deformed = false;
 
-            PickNodes_ForElement(camera, pickingNodesForElems, nodes, selectedNodes, model);
+            //PickNodes_ForElement(camera, pickingNodesForElems, nodes, selectedNodes, model);
             DrawText("Pick Nodes While Holding Shift", 400, 200, 20, RED);
             
         }
@@ -494,12 +506,12 @@ void runViewer(Beams::Model& model) {
 
             }
             //REMOVE GETS FUCKED WHEN CHOOSING ELEMENTS
-            /*if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
                 NodeRemoveActive = true;
                 NodeAddActive = false;
-            }*/
+            }
 
-            GuiToggle(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "INFO", & showNodeInfo);
+            GuiToggle(Rectangle{ 24 + 140 + 62+62, 8 + 24, 50, 28 }, "INFO", & showNodeInfo);
         }
         if (nodeSectionEl == 1) {  
             GuiToggle(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD", & elAddActive);
@@ -538,13 +550,13 @@ void runViewer(Beams::Model& model) {
 	CloseWindow();
 	return;
 }
-bool PickNode(const Camera3D& camera, const std::vector<Beams::Node>& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model) {
+bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model) {
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
         RayCollision collision;
 
         for (size_t i = 0; i < nodes.size(); i++) {
-            Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
+            Vector3 nodeCenter{ nodes.get(i).xRender,nodes.get(i).yRender,nodes.get(i).zRender };
             collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
             if (collision.hit) {
                 selectedNodes.push_back(i);
@@ -557,7 +569,7 @@ bool PickNode(const Camera3D& camera, const std::vector<Beams::Node>& nodes, std
         RayCollision collision;
 
         for (size_t i = 0; i < nodes.size(); i++) {
-            Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
+            Vector3 nodeCenter{ nodes.get(i).xRender,nodes.get(i).yRender,nodes.get(i).zRender };
             collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
             if (collision.hit) {
                 auto it = std::find(selectedNodes.begin(), selectedNodes.end(), i);
@@ -575,8 +587,13 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
         RayCollision collision;
 
         for (size_t i = 0; i < elements.size(); i++) {
-            Vector3 n1{ model.getNodes()[elements[i].node1Pos].xRender,model.getNodes()[elements[i].node1Pos].yRender,model.getNodes()[elements[i].node1Pos].zRender };
-            Vector3 n2{ model.getNodes()[elements[i].node2Pos].xRender,model.getNodes()[elements[i].node2Pos].yRender,model.getNodes()[elements[i].node2Pos].zRender };
+            const Beams::Node& node1 = model.getNodes().get_fromAll(elements[i].node1Pos);
+            const Beams::Node& node2 = model.getNodes().get_fromAll(elements[i].node2Pos);
+
+
+
+            Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+            Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
            
 
             Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
@@ -592,10 +609,13 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
         RayCollision collision;
 
         for (size_t i = 0; i < elements.size(); i++) {
+            const Beams::Node& node1 = model.getNodes().get_fromAll(elements[i].node1Pos);
+            const Beams::Node& node2 = model.getNodes().get_fromAll(elements[i].node2Pos);
 
-            Vector3 n1{ model.getNodes()[elements[i].node1Pos].xRender,model.getNodes()[elements[i].node1Pos].yRender,model.getNodes()[elements[i].node1Pos].zRender };
-            Vector3 n2{ model.getNodes()[elements[i].node2Pos].xRender,model.getNodes()[elements[i].node2Pos].yRender,model.getNodes()[elements[i].node2Pos].zRender };
 
+
+            Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+            Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
 
             Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
             collision = GetRayCollisionSphere(ray, elemCenter, 0.15f);
@@ -610,76 +630,79 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
 }
 
 
-void PickNodes_ForElement(const Camera3D& camera, size_t& pickingNodesForElems, const std::vector<Beams::Node>& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model)
-{
-    if (IsKeyDown(KEY_LEFT_SHIFT) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-        Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-        RayCollision collision;
-        /*for (auto& node : nodes) {
-        for (size_t i = 0; i < nodes.size(); i++) {
-        Vector3 nodeCenter{ nodes[i].xRender ,nodes[i].yRender ,nodes[i].zRender };
-        collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-        if (collision.hit) {
-
-        selectedNodes.push_back(i);
-        }
-        }
-        }*/
-
-        if (pickingNodesForElems == 0) {
-            for (size_t i = 0; i < nodes.size(); i++) {
-                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
-                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-                if (collision.hit) {
-                    pickingNodesForElems = 1;
-                    selectedNodes.push_back(i);
-                    std::cout << "Picked 1";
-                    break;
-                }
-            }
-        }
-        else if (pickingNodesForElems == 1) {
-            for (size_t i = 0; i < nodes.size(); i++) {
-                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
-                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-                if (collision.hit) {
-                    pickingNodesForElems = 2;
-                    selectedNodes.push_back(i);
-                    std::cout << "Picked 2";
-                    break;
-
-                }
-            }
-        }
-        else if (pickingNodesForElems == 2) {
-            for (size_t i = 0; i < nodes.size(); i++) {
-                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender};
-                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-                if (collision.hit) {
-                    pickingNodesForElems = 3;
-                    model.addElement(selectedNodes[0], selectedNodes[1], i,0);//<---------------------- FIX THIS! FIX!!!!
-                    selectedNodes.clear();
-                    std::cout << "Picked 3";
-                    break;
-
-                }
-            }
-
-        }
-    }
-    else if (IsKeyUp(KEY_LEFT_SHIFT)) {
-        pickingNodesForElems = 0;
-        selectedNodes.clear();
-
-    }
-}
+//void PickNodes_ForElement(const Camera3D& camera, size_t& pickingNodesForElems, const Beams::NodeContainer& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model)
+//{
+//    if (IsKeyDown(KEY_LEFT_SHIFT) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+//        Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
+//        RayCollision collision;
+//        /*for (auto& node : nodes) {
+//        for (size_t i = 0; i < nodes.size(); i++) {
+//        Vector3 nodeCenter{ nodes[i].xRender ,nodes[i].yRender ,nodes[i].zRender };
+//        collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
+//        if (collision.hit) {
+//
+//        selectedNodes.push_back(i);
+//        }
+//        }
+//        }*/
+//
+//        if (pickingNodesForElems == 0) {
+//            for (size_t i = 0; i < nodes.size(); i++) {
+//
+//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
+//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
+//                if (collision.hit) {
+//                    pickingNodesForElems = 1;
+//                    selectedNodes.push_back(i);
+//                    std::cout << "Picked 1";
+//                    break;
+//                }
+//            }
+//        }
+//        else if (pickingNodesForElems == 1) {
+//            for (size_t i = 0; i < nodes.size(); i++) {
+//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
+//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
+//                if (collision.hit) {
+//                    pickingNodesForElems = 2;
+//                    selectedNodes.push_back(i);
+//                    std::cout << "Picked 2";
+//                    break;
+//
+//                }
+//            }
+//        }
+//        else if (pickingNodesForElems == 2) {
+//            for (size_t i = 0; i < nodes.size(); i++) {
+//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender};
+//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
+//                if (collision.hit) {
+//                    pickingNodesForElems = 3;
+//                    model.addElement(selectedNodes[0], selectedNodes[1], i,0);//<---------------------- FIX THIS! FIX!!!!
+//                    selectedNodes.clear();
+//                    std::cout << "Picked 3";
+//                    break;
+//
+//                }
+//            }
+//
+//        }
+//    }
+//    else if (IsKeyUp(KEY_LEFT_SHIFT)) {
+//        pickingNodesForElems = 0;
+//        selectedNodes.clear();
+//
+//    }
+//}
 
 void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
 {
-    const std::vector<Beams::Node>& nodes = model.getNodes();
+    const Beams::NodeContainer& nodes = model.getNodes();
 
+    size_t nodeSize = nodes.size();
 
-    for (auto& node : nodes) {
+    for (size_t i = 0; i < nodeSize; i ++) {
+        const Beams::Node& node = nodes.get(i);
         Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender  };
         
         /*if (node.free_flag) { 
@@ -688,11 +711,11 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
         }*/
 
         if (deformed) {
-            nodeCoords += model.getDeflectionRender(node.id);
+            nodeCoords += model.getDeflectionRender(node.matrixPos);
         }
         DrawSphere(nodeCoords, 0.15f, RED);
 
-        Vector3 force = model.getForce(node.id); 
+        Vector3 force = model.getForce(node.matrixPos); 
         force = Vector3Normalize(force);
         Vector3 forceEndpoint = Vector3Add(nodeCoords, force);
         if (force.x  + force.y + force.z > 0.001) {
@@ -705,7 +728,7 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
 
 
     for (size_t pos : selected) {
-        DrawSphereWires(Vector3{ nodes[pos].xRender,nodes[pos].yRender,nodes[pos].zRender }, 0.2, 5, 5, DARKGREEN);
+        DrawSphereWires(Vector3{ nodes.get(pos).xRender,nodes.get(pos).yRender,nodes.get(pos).zRender }, 0.2, 5, 5, DARKGREEN);
     }
 
     //DrawCube(Vector3Zero(), 2.0f, 2.0f, 2.0f, RED);

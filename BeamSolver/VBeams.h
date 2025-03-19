@@ -31,20 +31,22 @@ namespace Beams {
 		float yRender;
 		float zRender;
 
-		Eigen::Index id; //for global matrix and DOFs use
+		size_t matrixPos; //for matrix use
+		
 		int pos; //position of Coords in the points vector;
-		bool free_flag = true;
-		std::set<size_t> inElements; 
-		Node(float x_, float y_, float z_,size_t id_) {
+
+		bool free_flag = true; //DOFs not used in solving
+		std::set<Eigen::Index> inElements;
+		Node(float x_, float y_, float z_, size_t id_) {
 			x = x_;
 			y = y_;
 			z = z_;
 
-			xRender = x_*RENDER_SCALING_FACTOR;
-			yRender = y_*RENDER_SCALING_FACTOR;
-			zRender = z_*RENDER_SCALING_FACTOR;
+			xRender = x_ * RENDER_SCALING_FACTOR;
+			yRender = y_ * RENDER_SCALING_FACTOR;
+			zRender = z_ * RENDER_SCALING_FACTOR;
 
-			id = id_;
+			matrixPos = id_;
 		}
 		/*bool operator< (const Node  & v) {
 			if (std::abs(x - v.x) >ERR_TOLERANCE) return x < v.x;
@@ -69,6 +71,105 @@ namespace Beams {
 		}
 	};
 
+
+	class NodeContainer {
+		std::vector<Node> Nodes;
+		size_t nextId = 0;
+		std::set<size_t> deleted;
+
+
+		Node& get_NotDeleted(size_t pos) {
+			auto it = deleted.find(pos);
+			auto endIt = deleted.end();
+			while (it != endIt) {
+				pos++;
+				it = deleted.find(pos);
+			}
+			return Nodes[pos];
+		}
+
+	public:
+
+		void emplace(Vector3& point) {
+			if (deleted.size() > 0) {
+				auto firstIt = deleted.begin();
+				size_t pos = *firstIt;
+				Nodes[pos].x = point.x;
+				Nodes[pos].y = point.y;
+				Nodes[pos].z = point.z;
+				Nodes[pos].matrixPos = nextId;
+				nextId++;
+				deleted.erase(firstIt);
+				return;
+			}
+
+			Nodes.emplace_back(point.x, point.y, point.z, nextId);
+			Nodes.back().pos = Nodes.size() - 1;
+			nextId++;
+
+			return;
+
+		}
+
+
+		void remove(size_t pos) {
+			if (pos >= Nodes.size()) return;
+			deleted.insert(pos);
+			return;
+		}
+
+		//Gets non deleted size
+		size_t  size() const {
+			return Nodes.size() - deleted.size();
+		}
+
+		//Returns nth not deleted node. For iterations
+		const Node& get(size_t pos) const {
+			auto it = deleted.find(pos);
+			auto endIt = deleted.end();
+			while (it != endIt) {
+				pos++;
+				it = deleted.find(pos);
+			}
+			return Nodes[pos];
+
+		}
+
+		//Returns Node despite if its deleted or not. For Elements
+		const Node& get_fromAll(size_t pos) const {
+			return Nodes[pos];
+		}
+
+		void setFree_fromAll(size_t pos, bool free) {
+			Nodes[pos].free_flag = free;
+			return;
+		}
+
+		bool getFree_fromAll(size_t pos) {
+			return Nodes[pos].free_flag;
+		}
+
+		void add_InElement_fromAll(size_t pos, Eigen::Index id) {
+			Node& node = Nodes[pos];
+			node.inElements.insert(id);
+			//free gets set from outside here. 
+		}
+
+
+
+		void remove_InElement_fromAll(size_t pos, Eigen::Index id) {
+			Node& node = Nodes[pos];
+			node.inElements.erase(id);
+			node.free_flag = !node.inElements.size();
+		}
+
+
+		void setId(size_t pos, Eigen::Index id) {
+			get_NotDeleted(pos).matrixPos = id;
+		}
+
+	};
+
 	class Section {
 	public:
 		float Area;
@@ -79,8 +180,8 @@ namespace Beams {
 		float G;
 
 		//preCalculated stuff for this section
-		float EIz12; 
-		float EIy12; 
+		float EIz12;
+		float EIy12;
 		float EIz6;
 		float EIy6;
 		float EIz4;
@@ -89,15 +190,15 @@ namespace Beams {
 		float EIy2;
 
 
-		Section(float _Area, float _Modulus, float _G, float _Ixx, float _Iyy , float _Izz ) {
+		Section(float _Area, float _Modulus, float _G, float _Ixx, float _Iyy, float _Izz) {
 			Area = _Area;
 			Izz = _Izz;
 			Ixx = _Ixx;
 
 
 			Iyy = (_Iyy == NULL) ? _Izz : _Iyy;
-			Ixx = (_Ixx == NULL) ? 0.001 : _Ixx ;//Hackia. Bad 
-			
+			Ixx = (_Ixx == NULL) ? 0.001 : _Ixx;//Hackia. Bad 
+
 			Modulus = _Modulus;
 			G = _G;
 			EIz12 = 12 * Modulus * Izz;
@@ -110,18 +211,18 @@ namespace Beams {
 			EIy2 = 2 * Modulus * Iyy;
 		}
 	};
-	
+
 	class vBeam {
 		Eigen::Index id;
-		
+
 		Eigen::SparseMatrix<float> localBmatrix;
 
 		float Len;
 		//make properties for common stifness matrices
 		size_t sectionId;
-		
+
 		//TODO: CHECK THAT MATRIX COMPUTES CORRECTLY
-		void calc_BMatrixTEST() { 
+		void calc_BMatrixTEST() {
 			float Area = 100;
 			float Izz = 100;
 			float Iyy = 100;
@@ -136,7 +237,7 @@ namespace Beams {
 			float EIy4 = 4 * Modulus * Iyy / Len;
 			float EIz2 = 2 * Modulus * Izz / Len;
 			float EIy2 = 2 * Modulus * Iyy / Len;
-			std::vector<Eigen::Triplet<float>> locStiffness_triplets(47); 
+			std::vector<Eigen::Triplet<float>> locStiffness_triplets(47);
 
 
 
@@ -188,20 +289,20 @@ namespace Beams {
 
 		};
 
-		void calc_Len(Node& N2, Node& N1) {
+		void calc_Len(const Node& N2, const Node& N1) {
 			Len = std::pow((N2.x - N1.x), 2) + std::pow((N2.y - N1.y), 2) + std::pow((N2.z - N1.z), 2);
 			Len = std::sqrt(Len);
 		};
-	
+
 		void calc_BMatrix(const Section section) {
-			
+
 			float Area = section.Area;
 			float Izz = section.Izz;
 			float Iyy = section.Iyy;
 			float Modulus = section.Modulus;
-			
-			float Lsq = 1/std::pow(Len, 2);
-			float Lcb = 1/std::pow(Len, 3);
+
+			float Lsq = 1 / std::pow(Len, 2);
+			float Lcb = 1 / std::pow(Len, 3);
 			float invLen = 1 / Len;
 			float EIz12 = section.EIz12 * Lcb;
 			float EIy12 = section.EIy12 * Lcb;
@@ -231,7 +332,7 @@ namespace Beams {
 
 
 			float k1 = Modulus * Area / Len;
-			float k2 = section.Ixx * section.G/ Len;// FIX THIS THIS IS WRONG <--------------------------------------------------
+			float k2 = section.Ixx * section.G / Len;// FIX THIS THIS IS WRONG <--------------------------------------------------
 			locStiffness_triplets.emplace_back(0, 0, k1);
 			locStiffness_triplets.emplace_back(0, 6, -k1);
 			locStiffness_triplets.emplace_back(1, 1, EIz12);
@@ -277,7 +378,7 @@ namespace Beams {
 #ifdef DEBUG_PRINTS
 			static bool printed = false;
 			if (printed)return;
-			std::cout << "\n-------------------------------------------------------------------------------\n Local B Matrix\n" << Eigen::MatrixXf(localBmatrix )<< "\n";
+			std::cout << "\n-------------------------------------------------------------------------------\n Local B Matrix\n" << Eigen::MatrixXf(localBmatrix) << "\n";
 			printed = true;
 #endif
 		};
@@ -287,28 +388,22 @@ namespace Beams {
 		size_t node1Pos, node2Pos, node3Pos;
 
 
-		vBeam(Eigen::Index id_, Node& N1, Node& N2, Node& N3, size_t _sectionId, const Section& section) {
+		vBeam(Eigen::Index id_, const Node& N1, const Node& N2, const Node& N3, size_t _sectionId, const Section& section) {
 			localBmatrix.resize(12, 12);
-			N1.free_flag = false;
-			N2.free_flag = false;
 			id = id_;
-
-			N1.inElements.insert(static_cast<size_t>(id));
-			N2.inElements.insert(static_cast<size_t>(id));
-			N3.inElements.insert(static_cast<size_t>(id));
-
+			
 			node1Pos = N1.pos;
 			node2Pos = N2.pos;
 			node3Pos = N3.pos;
 
 
 			sectionId = _sectionId;
-			calc_Len(N2,N1);
+			calc_Len(N2, N1);
 
 			calc_BMatrix(section);
 		};
-	
-		void reCalc(std::vector<Node>& Nodes,const Section& section) {
+
+		void reCalc(std::vector<Node>& Nodes, const Section& section) {
 			calc_Len(Nodes[node2Pos], Nodes[node1Pos]);
 			calc_BMatrix(section);
 		}
@@ -321,15 +416,15 @@ namespace Beams {
 			return id;
 		}
 
-		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets,std::vector<Node>& Nodes ,Section& section) {
+		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets, NodeContainer& Nodes, Section& section) {//TODO: refactor stupid get_fromAll function calls. Put this in model
 			//using direction cosine matrix because reasons and it works also and no gimbal lock or whatever this stuff is 
 			static const Eigen::Vector3d xAxis(1, 0, 0);
 			static const Eigen::Vector3d yAxis(0, 1, 0);
 			static const Eigen::Vector3d zAxis(0, 0, 1);
 
 
-			Eigen::Vector3d localX_unit(Nodes[node2Pos].x - Nodes[node1Pos].x, Nodes[node2Pos].y - Nodes[node1Pos].y, Nodes[node2Pos].z - Nodes[node1Pos].z);
-			Eigen::Vector3d localY_unit(Nodes[node3Pos].x - Nodes[node1Pos].x, Nodes[node3Pos].y - Nodes[node1Pos].y, Nodes[node3Pos].z - Nodes[node1Pos].z);//a vector in XY local plane
+			Eigen::Vector3d localX_unit(Nodes.get_fromAll(node2Pos).x - Nodes.get_fromAll(node1Pos).x, Nodes.get_fromAll(node2Pos).y - Nodes.get_fromAll(node1Pos).y, Nodes.get_fromAll(node2Pos).z - Nodes.get_fromAll(node1Pos).z);
+			Eigen::Vector3d localY_unit(Nodes.get_fromAll(node3Pos).x - Nodes.get_fromAll(node1Pos).x, Nodes.get_fromAll(node3Pos).y - Nodes.get_fromAll(node1Pos).y, Nodes.get_fromAll(node3Pos).z - Nodes.get_fromAll(node1Pos).z);//a vector in XY local plane
 			Eigen::Vector3d localZ_unit;
 
 
@@ -338,9 +433,9 @@ namespace Beams {
 			localY_unit = localY_unit - localY_unit.dot(localX_unit) * localX_unit;// Y local  vector
 			localY_unit = localY_unit / localY_unit.norm(); //Y local unit Vector
 
-			
+
 			localZ_unit = localX_unit.cross(localY_unit);
-			
+
 
 			std::vector<Eigen::Triplet<float>> dirCosineMat_triplets(37);
 
@@ -366,8 +461,8 @@ namespace Beams {
 			Eigen::SparseMatrix<float> globalB = cosMatrix * localBmatrix * (cosMatrix.transpose());
 			std::cout << Eigen::MatrixXf(globalB);
 
-			Eigen::Index nid1 = Nodes[node1Pos].id;
-			Eigen::Index nid2 = Nodes[node2Pos].id;
+			Eigen::Index nid1 = Nodes.get_fromAll(node1Pos).matrixPos;
+			Eigen::Index nid2 = Nodes.get_fromAll(node2Pos).matrixPos;
 
 			for (int k = 0; k < 6; ++k)
 			{
@@ -376,20 +471,20 @@ namespace Beams {
 				size_t counter = 0;
 				std::ptrdiff_t i;
 				for (i = 0; i < 6; ++i) //local Node 1 for Node 1 in global
-				{					
+				{
 					Eigen::Index row = (it + i).row(); // row index
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
-					
-					globalTriplets.emplace_back(nid1*6  + row, nid1 * 6 + col, val);
+
+					globalTriplets.emplace_back(nid1 * 6 + row, nid1 * 6 + col, val);
 
 				}
-				for (i = 6; it+i; ++i) {
+				for (i = 6; it + i; ++i) {
 					Eigen::Index row = (it + i).row(); // row index
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
 
-					globalTriplets.emplace_back(nid2 * 6 + row-6, nid1 * 6 + col, val);
+					globalTriplets.emplace_back(nid2 * 6 + row - 6, nid1 * 6 + col, val);
 				}
 			}
 			for (int k = 6; k < globalB.outerSize(); ++k)
@@ -404,10 +499,10 @@ namespace Beams {
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
 
-					globalTriplets.emplace_back(nid1 * 6 + row , nid2 * 6 + col - 6, val);
+					globalTriplets.emplace_back(nid1 * 6 + row, nid2 * 6 + col - 6, val);
 
 				}
-				for (i = 6; it+i; ++i) {
+				for (i = 6; it + i; ++i) {
 					Eigen::Index row = (it + i).row(); // row index
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
@@ -416,18 +511,18 @@ namespace Beams {
 				}
 			}
 		}
-	
-};
 
+	};
 
-	
 	class Model {
 		std::vector<Eigen::Triplet<float>> globalK_triplets;
 		std::vector<Eigen::Triplet<float>> globalF_triplets;
-		
+
 		Eigen::SparseVector<float> U, F;
-		
-		std::vector<Node> Nodes;
+
+		//std::vector<Node> Nodes;
+		//std::vector<size_t> deletedNodePos;
+		NodeContainer Nodes;
 
 		std::vector<Section> Sections;
 
@@ -439,7 +534,7 @@ namespace Beams {
 
 		std::vector<size_t> BCpinned;//UNUSED- and going to be unused.
 		std::vector<size_t> BCfixed;
-		std::map<size_t, std::array<float,6>> Forces;
+		std::map<size_t, std::array<float, 6>> Forces;
 
 
 		bool solved = false;
@@ -449,54 +544,47 @@ namespace Beams {
 		float scaleFactor = 1; //scale Happens Here As Well to do it once and not in every frame
 
 	public:
-		
+
+		void addNode(Vector3& point) {
+			Nodes.emplace(point);
+		}
 		void addNode(Vector3 point) {
-			std::vector<size_t> elNodePos;
-			
-			Nodes.emplace_back(point.x, point.y, point.z, Nodes.size());
-			Nodes.back().pos = Nodes.size() - 1;
-			
+			Nodes.emplace(point);
 		}
 
-		void removeNode(size_t pos) {//remove node from nth position
-			Node& nToRemove = Nodes[pos];
 
+		//remove node from nth position 
+		void removeNode(size_t pos) {
+			const Node& node =  Nodes.get(pos);
 
-			for (size_t i = pos; i < Nodes.size(); i++) {//correct positions in the vector
-				Nodes[i].pos--;
-			}
-			
-
-			for (auto& element : Elements) {
-				if (std::find(Nodes[pos].inElements.begin(), Nodes[pos].inElements.end(), Nodes[pos].id) != Nodes[pos].inElements.end()) {
-					solved = false;
-					removeElement(element.getID());
-					continue;
+			for (auto& element : Elements) {//iterate elements only once. TODO: change with removeElementId when you do binary search
+				if (std::find(node.inElements.begin(), node.inElements.end(), element.getID()) != node.inElements.end()) {
+					Nodes.remove_InElement_fromAll(element.node1Pos,element.getID());
+					Nodes.remove_InElement_fromAll(element.node2Pos, element.getID());
+					Nodes.remove_InElement_fromAll(element.node3Pos, element.getID());
 				}
-				size_t nPos = (element.node1Pos > pos) ? element.node1Pos-- : element.node1Pos;
-				nPos = (element.node2Pos > pos) ? element.node2Pos-- : element.node2Pos;
-				nPos = (element.node3Pos > pos) ? element.node3Pos-- : element.node3Pos;
 			}
 
 
-			Nodes.erase(Nodes.begin() + pos);
-			//Points.erase(Points.begin() + pos); 
-			//Nodes.erase(Nodes.begin() + pos);
+			Nodes.remove(pos);	
 		}
 
-		bool addElement(size_t n1, size_t n2, size_t n3,size_t sectionID) {
+		bool addElement(size_t n1, size_t n2, size_t n3, size_t sectionID) {
 
 			if (Sections.size() - 1 < sectionID) return false;
-			
 			solved = false;
 
 
-			F.resize(F.size() + ((int)Nodes[n1].free_flag + (int)Nodes[n2].free_flag)*6);//free nodes about to be in element add 6 Dofs to F
+			F.resize(F.size() + ((int)Nodes.getFree_fromAll(n1) + (int)Nodes.getFree_fromAll(n2)) * 6);//free nodes about to be in element add 6 Dofs to F
 
-			Elements.emplace_back(eId_Last, Nodes[n1], Nodes[n2], Nodes[n3],sectionID,Sections[sectionID]);
+			Elements.emplace_back(eId_Last, Nodes.get_fromAll(n1), Nodes.get_fromAll(n2), Nodes.get_fromAll(n3), sectionID, Sections[sectionID]);
+			Nodes.add_InElement_fromAll(n1, eId_Last);
+			Nodes.add_InElement_fromAll(n2, eId_Last);
+			Nodes.add_InElement_fromAll(n3, eId_Last);
+			Nodes.setFree_fromAll(n1, false);
+			Nodes.setFree_fromAll(n2, false);
 
-					
-			
+
 			eId_Last++;
 			return true;
 		}
@@ -508,18 +596,11 @@ namespace Beams {
 				vBeam& el = Elements[counter];
 				if (el.getID() == eId) {
 
-					std::set<size_t> &n1Els = Nodes[el.node1Pos].inElements;
-					std::set<size_t>& n2Els = Nodes[el.node2Pos].inElements;
-					std::set<size_t>& n3Els = Nodes[el.node3Pos].inElements;
+					Nodes.remove_InElement_fromAll(el.node1Pos,eId);
+					Nodes.remove_InElement_fromAll(el.node2Pos,eId);
+					Nodes.remove_InElement_fromAll(el.node3Pos,eId);
 
-					n1Els.erase(n1Els.find((size_t)eId));
-					n2Els.erase(n2Els.find((size_t)eId));
-					n3Els.erase(n3Els.find((size_t)eId));
-
-
-					if (n1Els.size() == 0)Nodes[el.node1Pos].free_flag = true;
-					if (n2Els.size() == 0)Nodes[el.node2Pos].free_flag = true;
-
+					
 					Elements.erase(Elements.begin() + counter); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
 
 					//break;
@@ -534,46 +615,36 @@ namespace Beams {
 			if (ePos > Elements.size()) return false;
 
 			vBeam& el = Elements[ePos];
-			
+
 			solved = false;
 
-			std::set<size_t>& n1Els = Nodes[el.node1Pos].inElements;
-			std::set<size_t>& n2Els = Nodes[el.node2Pos].inElements;
-			std::set<size_t>& n3Els = Nodes[el.node3Pos].inElements;
-
-			n1Els.erase(n1Els.find(el.getID()));
-			n2Els.erase(n2Els.find(el.getID()));
-			n3Els.erase(n3Els.find(el.getID()));
-
-
-			if (n1Els.size() == 0)Nodes[el.node1Pos].free_flag = true;
-			if (n2Els.size() == 0)Nodes[el.node2Pos].free_flag = true;
-
-			
-
+			Eigen::Index eId = el.getID();
+			Nodes.remove_InElement_fromAll(el.node1Pos, eId);
+			Nodes.remove_InElement_fromAll(el.node2Pos, eId);
+			Nodes.remove_InElement_fromAll(el.node3Pos, eId);
 
 			Elements.erase(Elements.begin() + ePos); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
 
 			//break;
 			return true;
-			
+
 
 		}
 
 		void oneElementTest() {
 
 			addNode(Vector3{ 0,0,0 });
-			addNode(Vector3{50, 0, 0});
-			addNode(Vector3{0.2, 50,0});
-			addNode(Vector3{100, 0, 0});
-			addNode(Vector3{150, 0, 0});
-			addNode(Vector3{200, 0, 0});
-			addNode(Vector3{25, 50, 0});
-			addNode(Vector3{75, 50, 0 });
-			addNode(Vector3{125, 50, 0 });
+			addNode(Vector3{ 50, 0, 0 });
+			addNode(Vector3{ 0.2, 50,0 });
+			addNode(Vector3{ 100, 0, 0 });
+			addNode(Vector3{ 150, 0, 0 });
+			addNode(Vector3{ 200, 0, 0 });
+			addNode(Vector3{ 25, 50, 0 });
+			addNode(Vector3{ 75, 50, 0 });
+			addNode(Vector3{ 125, 50, 0 });
 
 
-			addSection(100, 210000, 80000, 1000,100,100);
+			addSection(100, 210000, 80000, 1000, 100, 100);
 
 			addElement(0, 1, 2, 0);
 			addElement(1, 3, 2, 0);
@@ -585,12 +656,12 @@ namespace Beams {
 			Forces[4][1] = 100;
 
 		};
-				
+
 		void addSection(float _Area, float _Modulus, float _G, float _Ixx, float _Iyy, float _Izz) {
 			Sections.emplace_back(_Area, _Modulus, _G, _Ixx, _Iyy, _Izz);
-			
+
 		}
-		
+
 		void addForce(size_t nodePos, size_t Dof, float val) {
 
 		}
@@ -619,8 +690,8 @@ namespace Beams {
 			size_t lastUnsorted = Nodes.size();
 			while (hasSwapped) {
 				hasSwapped = false;
-				for (int i = 0; i < lastUnsorted-1; i++) {
-					if (Nodes[nodes_IdOrder[i]].id > Nodes[nodes_IdOrder[i + 1]].id) {
+				for (int i = 0; i < lastUnsorted - 1; i++) {
+					if (Nodes.get(nodes_IdOrder[i]).matrixPos > Nodes.get(nodes_IdOrder[i + 1]).matrixPos) {
 						size_t large = nodes_IdOrder[i];
 						nodes_IdOrder[i] = nodes_IdOrder[i + 1];
 						nodes_IdOrder[i + 1] = large;
@@ -629,22 +700,22 @@ namespace Beams {
 				}
 				lastUnsorted--;
 			}
-			
+
 			//ON SORTED BY IDs ARRAY, put free nodes last.
 			for (auto& pos : nodes_IdOrder) {
-				Node& node = Nodes[pos];
+				const Node& node = Nodes.get(pos);
 				//ensure no gaps in Ids. not sure for this 
-				if (node.id - lastID > 1) {
+				if (node.matrixPos - lastID > 1) {
 					foundUnused++;
 				}
-				lastID = node.id;
+				lastID = node.matrixPos;
 
 				if (!node.free_flag) {
-					node.id = node.id - foundUnused;
+					Nodes.setId(node.pos ,node.matrixPos - foundUnused);
 					noDofs++;
 				}
 				else {
-					node.id = Nodes.size() - 1 - foundUnused;//unused nodes go above other unused nodes in the end 
+					Nodes.setId(node.pos ,Nodes.size() - 1 - foundUnused);//unused nodes go above other unused nodes in the end 
 					foundUnused++;
 
 				}
@@ -653,22 +724,22 @@ namespace Beams {
 
 
 			if (noDofs < 1) return;
-			#ifdef DEBUG_PRINTS
+#ifdef DEBUG_PRINTS
 			std::cout << "\n------------------------------------\nNO DOFs: " << noDofs << "\n";
-			#endif // DEBUG_PRINTS
+#endif // DEBUG_PRINTS
 
 
 			//populate global stigness matrix triplets -- Helper (free) Elements (not beam nodes) must have last IDs for correct placement in the matrix
-			#ifdef DEBUG_PRINTS
-			Eigen::SparseMatrix<float> testGlobAll(noDofs*10, noDofs*10);
-			#endif
-			
+#ifdef DEBUG_PRINTS
+			Eigen::SparseMatrix<float> testGlobAll(noDofs * 10, noDofs * 10);
+#endif
+
 			for (auto& element : Elements) {
-				element.LocalMatrix2GlobalTriplets(globalK_triplets,Nodes,Sections[element.getSectionId()]);
-	
-				#ifdef DEBUG_PRINTS
-				testGlobAll.setFromTriplets(globalK_triplets.begin(),globalK_triplets.end());
-				#endif // DEBUG_PRINTS
+				element.LocalMatrix2GlobalTriplets(globalK_triplets, Nodes, Sections[element.getSectionId()]);
+
+#ifdef DEBUG_PRINTS
+				testGlobAll.setFromTriplets(globalK_triplets.begin(), globalK_triplets.end());
+#endif // DEBUG_PRINTS
 
 			}
 
@@ -683,7 +754,7 @@ namespace Beams {
 			//remove rows and columns from BCs
 			//Unfortunately I Have to duplicate. Pending better solution. 
 			std::vector<Eigen::Triplet<float>> triplets_AfterBCs;
-			int row,col,val;
+			int row, col, val;
 			for (auto& triplet : globalK_triplets) {
 				row = triplet.row(); col = triplet.col(); val = triplet.value();
 				for (size_t fixBCid : BCfixed) {
@@ -694,10 +765,10 @@ namespace Beams {
 						triplets_AfterBCs.emplace_back(row, col - 6, val);
 					}
 					else if (row > fixBCid * 6 + 5 && col < fixBCid * 6) {
-						triplets_AfterBCs.emplace_back(row - 6, col , val);
+						triplets_AfterBCs.emplace_back(row - 6, col, val);
 					}
 					else if (row > fixBCid * 6 + 5 && col > fixBCid * 6 + 5) {
-						triplets_AfterBCs.emplace_back(row-6, col - 6, val);
+						triplets_AfterBCs.emplace_back(row - 6, col - 6, val);
 					}
 				}
 			}
@@ -710,24 +781,24 @@ namespace Beams {
 #endif // DEBUG_PRINTS
 			//std::cout << Eigen::MatrixXf(globMatr)<<std::endl;
 			F.resize(globMatr.rows());
-			
+
 
 			std::vector<Eigen::Triplet<float>> Ftriplets_AfterBCs;
 			//make forces vector 
 			for (auto& force : Forces) {
-				size_t forceMatrixPos = force.first*6;
-		
+				size_t forceMatrixPos = force.first * 6;
+
 				for (size_t BCid : BCfixed) {
 					forceMatrixPos = (BCid < forceMatrixPos) ? forceMatrixPos - 6 : forceMatrixPos;
 				}
 				if (forceMatrixPos >= F.rows()) continue;
 
 				F.insert((Eigen::Index)forceMatrixPos) = force.second[0];
-				F.insert((Eigen::Index)forceMatrixPos+1) = force.second[1];
+				F.insert((Eigen::Index)forceMatrixPos + 1) = force.second[1];
 				F.insert((Eigen::Index)forceMatrixPos + 2) = force.second[2];
 				F.insert((Eigen::Index)forceMatrixPos + 3) = force.second[3];
-				F.insert((Eigen::Index)forceMatrixPos+4) = force.second[4];
-				F.insert((Eigen::Index)forceMatrixPos+5) = force.second[5];
+				F.insert((Eigen::Index)forceMatrixPos + 4) = force.second[4];
+				F.insert((Eigen::Index)forceMatrixPos + 5) = force.second[5];
 
 			}
 #ifdef DEBUG_PRINTS
@@ -736,7 +807,7 @@ namespace Beams {
 #endif // DEBUG_PRINTS
 
 
-			
+
 
 			Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
 			solver.compute(globMatr);
@@ -757,17 +828,19 @@ namespace Beams {
 
 				return;
 			}
+			const std::vector<int> a;
+			a.size();
 			std::cout << "Sparse LU decomposition failed\nConverting to Dense\n";
 			Eigen::MatrixXf A(globMatr);                       // DO EXCEPTION HERE if this fails Also
-			U = A.lu().solve(Eigen::VectorXf(F)).sparseView(); 
-			std::cout << F <<"\n" << A << "\n" << U;
+			U = A.lu().solve(Eigen::VectorXf(F)).sparseView();
+			std::cout << F << "\n" << A << "\n" << U;
 			Urender.resize(U.rows());
 			Urender = U * RENDER_SCALING_FACTOR * scaleFactor;
 			solved = true;
-			
+
 		}
-		
-		const std::vector<Node>& getNodes() {
+
+		const NodeContainer& getNodes() {
 			return Nodes;
 		}
 
@@ -775,15 +848,15 @@ namespace Beams {
 			return Elements;
 		}
 
-		Vector3 getDeflection(size_t nodeId) {
+		Vector3 getDeflection(size_t nodeMatrixPos) {
 			if (!solved) return Vector3Zero();
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				if (fixedId < nodeId) fixedNodesBefore++;
-				else if (fixedId == nodeId) return Vector3Zero();
+				if (fixedId < nodeMatrixPos) fixedNodesBefore++;
+				else if (fixedId == nodeMatrixPos) return Vector3Zero();
 			}
-			size_t afterBcId= nodeId * 6 - fixedNodesBefore * 6;
+			size_t afterBcId = nodeMatrixPos * 6 - fixedNodesBefore * 6;
 			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
 
 
@@ -791,25 +864,25 @@ namespace Beams {
 
 		}
 
-		Vector3 getDeflectionRender(size_t nodeId) {
+		Vector3 getDeflectionRender(size_t nodeMatrixPos) {
 			if (!solved) return Vector3Zero();
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				if (fixedId < nodeId) fixedNodesBefore++;
-				else if (fixedId == nodeId) return Vector3Zero();
+				if (fixedId < nodeMatrixPos) fixedNodesBefore++;
+				else if (fixedId == nodeMatrixPos) return Vector3Zero();
 			}
-			size_t afterBcId = nodeId * 6 - fixedNodesBefore * 6;
+			size_t afterBcId = nodeMatrixPos * 6 - fixedNodesBefore * 6;
 			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
 
 
-			return Vector3{ Urender.coeff(afterBcId) ,Urender.coeff(afterBcId + 1) ,Urender.coeff(afterBcId + 2)  };
+			return Vector3{ Urender.coeff(afterBcId) ,Urender.coeff(afterBcId + 1) ,Urender.coeff(afterBcId + 2) };
 
 		}
 
-		Vector3 getForce(size_t nodeId) {
-			auto it = Forces.find(nodeId);
-			
+		Vector3 getForce(size_t nodeMatrixPos) {
+			auto it = Forces.find(nodeMatrixPos);
+
 			if (it == Forces.end()) return Vector3Zero();
 			return Vector3{ it->second[0],it->second[1],it->second[2] };
 
@@ -817,24 +890,27 @@ namespace Beams {
 		}
 
 		void printDeformed() {
-			for (auto& node : Nodes) {
+			size_t nodeSize = Nodes.size();
+			for (size_t i = 0; i < nodeSize; i++) {
+				const Node& node = Nodes.get(i);
 				Vector3 a;
 				if (node.free_flag) {
 					a = Vector3Zero();
 					continue;
 				}
-				a = getDeflection(node.id);
+				a = getDeflection(node.matrixPos);
 				std::cout << a.x << " " << a.y << " " << a.z << " \n";
 			}
+
 		}
-		
+
 		bool isSolved() {
 			return solved;
 		}
-	
-		
 
-};
+
+
+	};
 };
 
 
