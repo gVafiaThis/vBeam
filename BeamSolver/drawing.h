@@ -277,7 +277,7 @@ enum GuiFlags {
     SHOW_BC_INFO = 1 << 13
 
 };
-
+//TODO: Element Remove Crash
 
 void runViewer(Beams::Model& model) {
 	Camera3D camera;
@@ -328,7 +328,9 @@ void runViewer(Beams::Model& model) {
             deformed = !deformed;
         }
         
-        bool nodePicking = ActionFlags & (GuiFlags::NODE_REMOVE_ACTIVE | GuiFlags::EL_ADD_ACTIVE | GuiFlags::SHOW_NODE_INFO);
+        bool nodePicking = ActionFlags & 
+        (GuiFlags::NODE_REMOVE_ACTIVE | GuiFlags::EL_ADD_ACTIVE | GuiFlags::SHOW_NODE_INFO | GuiFlags::FORCE_ADD_ACTIVE | GuiFlags::FORCE_REMOVE_ACTIVE
+            | GuiFlags::BC_ADD_ACTIVE | GuiFlags::BC_REMOVE_ACTIVE);
         if (nodePicking) {
             PickNode(camera, nodes, selectedNodes, model);
         }
@@ -538,7 +540,7 @@ void runViewer(Beams::Model& model) {
             GuiListView(Rectangle{ 432, 40, 120, 96 }, listNames.data(), &ListViewTop, &sectionId);
             //std::string info = "Pick 3 nodes and the corresponding section.";
             GuiLabel(Rectangle{ 576, 40, 250, 40 }, "Pick 3 nodes and the corresponding section.\n Section properties can be managed in \"Sections\" from the dropdown");
-            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD ELEMENT")) {
+            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD ELEMENT") && selectedNodes.size()==3) {
                 //NodeAddActive = false;
                 model.addElement(nodes.get(selectedNodes[0]).pos, nodes.get(selectedNodes[1]).pos, nodes.get(selectedNodes[2]).pos,static_cast<size_t>(sectionId));
                 selectedNodes.clear();
@@ -653,6 +655,144 @@ void runViewer(Beams::Model& model) {
 
         }
 
+        if (GuiFlags::FORCE_ADD_ACTIVE & ActionFlags)
+        {
+            static int xNew;
+            static int yNew;
+            static int zNew;
+            static bool xActive = false, yActive = false, zActive = false;
+            static bool xNeg = false;
+            static bool yNeg = false;
+            static bool zNeg = false;
+            deformed = false;
+
+            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Add Force")) ActionFlags &= ~GuiFlags::FORCE_ADD_ACTIVE;
+            if (GuiValueBox(Rectangle{ 444, 56 - 13, 56, 24 }, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
+            if (GuiValueBox(Rectangle{ 444, 88 - 13, 56, 24 }, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
+            if (GuiValueBox(Rectangle{ 444, 120 - 13, 56, 24 }, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
+            GuiCheckBox(Rectangle{ 516, 56 - 13, 24, 24 }, "Neg", &xNeg);
+            GuiCheckBox(Rectangle{ 516, 88 - 13, 24, 24 }, "Neg", &yNeg);
+            GuiCheckBox(Rectangle{ 516, 120 - 13, 24, 24 }, "Neg", &zNeg);
+            GuiLabel(Rectangle{ 580, 40, 350, 56 }, "Pick Nodes and insert Force vector coordinates\nToggle NEG for Negative Values\nADD FORCE adds the force to slected Nodes\nCLEAR clears selected Nodes");
+            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD FORCE") && selectedNodes.size()>0) {
+                for (auto nodePos : selectedNodes) {
+                    xNew = (xNeg) ? -xNew : xNew;
+                    yNew = (yNeg) ? -yNew : yNew;
+                    zNew = (zNeg) ? -zNew : zNew;
+                    model.addForce(nodes.get(nodePos).pos,0,xNew);
+                    model.addForce(nodes.get(nodePos).pos, 1, yNew);
+                    model.addForce(nodes.get(nodePos).pos, 2, zNew);
+
+                }
+            }
+            if (GuiButton(Rectangle{ 580, 112, 120, 24 }, "CLEAR")) {
+                selectedNodes.clear();
+            }
+
+        }
+
+        if (GuiFlags::FORCE_REMOVE_ACTIVE & ActionFlags) {
+            {
+                deformed = false;
+
+                static bool toggleActive = false;
+                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Remove Force")) ActionFlags &= ~GuiFlags::FORCE_REMOVE_ACTIVE;
+                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
+
+                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                    for (size_t selected : selectedNodes) {
+                        model.removeForce(selected);
+                    }
+                    selectedNodes.clear();
+                };
+
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                    selectedNodes.clear();
+                }
+            }
+        }
+
+        if (GuiFlags::SHOW_FORCE_INFO & ActionFlags) {
+            {
+                for (auto& force: model.getForces()) {
+                    const Beams::Node& node = nodes.get(force.first);
+                    Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
+
+                    if (deformed) {
+
+                        nodeCoords += model.getDeflectionRender(node.matrixPos);
+                    }
+
+                    Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
+                    char a[64];
+                    sprintf_s(a, "Force:\nX: %f\nY: %f\nZ: %f", force.second[0], force.second[1], force.second[2]);
+                    DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
+                }
+            }
+        }
+
+
+        if (GuiFlags::BC_ADD_ACTIVE & ActionFlags)
+        {
+            deformed = false;
+
+            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Add Force")) ActionFlags &= ~GuiFlags::BC_ADD_ACTIVE;
+     
+            GuiLabel(Rectangle{ 580, 40, 350, 56 }, "Pick Nodes with left click, unpick with right click\nADD BC adds the BC to selcted Nodes\nCLEAR clears selected Nodes");
+            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD BC") && selectedNodes.size() > 0) {
+                for (auto nodePos : selectedNodes) {
+                    model.addBCfixed(nodes.get(nodePos).pos);
+                    selectedNodes.clear();
+                }
+            }
+            if (GuiButton(Rectangle{ 580, 112, 120, 24 }, "CLEAR")) {
+                selectedNodes.clear();
+            }
+
+        }
+
+        if (GuiFlags::BC_REMOVE_ACTIVE & ActionFlags) {
+            {
+                deformed = false;
+
+                static bool toggleActive = false;
+                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Remove Force")) ActionFlags &= ~GuiFlags::BC_REMOVE_ACTIVE;
+                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
+
+                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                    for (size_t selected : selectedNodes) {
+                        model.removeBCfixed(selected);
+                    }
+                    selectedNodes.clear();
+                };
+
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                    selectedNodes.clear();
+                }
+            }
+        }
+
+        if (GuiFlags::SHOW_BC_INFO & ActionFlags) {
+            {
+                for (auto& force : model.getBCfixed()) {
+                    const Beams::Node& node = nodes.get(force);
+                    Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
+
+                    if (deformed) {
+
+                        nodeCoords += model.getDeflectionRender(node.matrixPos);
+                    }
+
+                    Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
+                    char a[64];
+                    sprintf_s(a, "Fixed");
+                    DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
+                }
+            }
+        }
+
+
+
         GuiLabel(Rectangle{12, 10, 140, 24 }, "Control:");
         if (GuiDropdownBox(Rectangle{ 12, 8 + 24, 140, 28 }, "NODES;ELEMENTS;SECTIONS;FORCES;BCs", &nodeSectionEl, ActionFlags & GuiFlags::DROPDOWN_EDIT)) ActionFlags ^= GuiFlags::DROPDOWN_EDIT;
         if (GuiButton(Rectangle{ 12, 700, 140, 28 }, "Solve!")) {
@@ -700,21 +840,30 @@ void runViewer(Beams::Model& model) {
 
         else if (nodeSectionEl == 3) {
             if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
-                ActionFlags = GuiFlags::EL_ADD_ACTIVE;
+                ActionFlags = GuiFlags::FORCE_ADD_ACTIVE;
             }
 
             if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
-                ActionFlags = GuiFlags::EL_REMOVE_ACTIVE;
+                ActionFlags = GuiFlags::FORCE_REMOVE_ACTIVE;
             }
 
             if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
-                ActionFlags = GuiFlags::SHOW_ELEM_INFO;
-                for (auto infoPos : infoElems) {
-                    selectedElems.push_back(infoPos);
-                }
+                ActionFlags = GuiFlags::SHOW_FORCE_INFO;
             }
         }
+        else if (nodeSectionEl == 4) {
+            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+                ActionFlags = GuiFlags::BC_ADD_ACTIVE;
+            }
 
+            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+                ActionFlags = GuiFlags::BC_REMOVE_ACTIVE;
+            }
+
+            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+                ActionFlags = GuiFlags::SHOW_BC_INFO;
+            }
+        }
 
         GuiUnlock();
         
@@ -836,25 +985,36 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
             nodeCoords += model.getDeflectionRender(node.matrixPos);
         }
         DrawSphere(nodeCoords, 0.15f, RED);
-
-        Vector3 force = model.getForce(node.pos); 
-        force = Vector3Normalize(force);
-        Vector3 forceEndpoint = Vector3Add(nodeCoords, force);
-        if (force.x  + force.y + force.z > 0.001) {
-            DrawLine3D(nodeCoords, forceEndpoint  , DARKBROWN);
-            DrawCylinderEx(Vector3Add(nodeCoords, force / 2), forceEndpoint, 0.1f, 0.0f, 10, DARKBROWN);
-        }
-        
-        
     }
 
+    for (auto forceIt : model.getForces()) {
+        const Beams::Node& node = nodes.get(forceIt.first);
+        Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender };
+        if (deformed) {
+            nodeCoords += model.getDeflectionRender(node.matrixPos);
+        }
+
+
+        Vector3 force{ forceIt.second[0],forceIt.second[1],forceIt.second[2] };
+        if (std::abs(force.x) + std::abs(force.y) + std::abs(force.z) > 0.001) {
+            force = Vector3Normalize(force);
+            Vector3 forceEndpoint = Vector3Add(nodeCoords, force);
+            DrawLine3D(nodeCoords, forceEndpoint, DARKBROWN);
+            DrawCylinderEx(Vector3Add(nodeCoords, force / 2), forceEndpoint, 0.1f, 0.0f, 10, DARKBROWN);
+        }
+    }
+
+    for (auto BC : model.getBCfixed()) {
+        const Beams::Node& node = nodes.get(BC);
+        Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender };
+        DrawCubeWires(nodeCoords, 1.0f, 1.0f, 1.0f, MAROON);
+    }
 
     for (size_t pos : selected) {
         DrawSphereWires(Vector3{ nodes.get(pos).xRender,nodes.get(pos).yRender,nodes.get(pos).zRender }, 0.2, 5, 5, DARKGREEN);
     }
 
     //DrawCube(Vector3Zero(), 2.0f, 2.0f, 2.0f, RED);
-    DrawCubeWires(Vector3Zero(), 2.0f, 2.0f, 2.0f, MAROON);
     DrawGrid(10, 10.0f);
 }
 

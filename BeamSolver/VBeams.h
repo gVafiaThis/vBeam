@@ -517,6 +517,8 @@ namespace Beams {
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
 
+
+
 					globalTriplets.emplace_back(nid1 * 6 + row, nid2 * 6 + col - 6, val);
 
 				}
@@ -524,6 +526,7 @@ namespace Beams {
 					Eigen::Index row = (it + i).row(); // row index
 					Eigen::Index col = (it + i).col(); // col index (here it is equal to k)
 					float val = (it + i).value();
+
 
 					globalTriplets.emplace_back(nid2 * 6 + row - 6, nid2 * 6 + col - 6, val);
 				}
@@ -538,22 +541,20 @@ namespace Beams {
 
 		Eigen::SparseVector<float> U, F;
 
-		//std::vector<Node> Nodes;
-		//std::vector<size_t> deletedNodePos;
 		NodeContainer Nodes;
 
 		std::map<size_t,Section> Sections;
 		size_t secIdNext = 0;
 
-		size_t nId_Last = 0;
+		//size_t nId_Last = 0;
 		std::vector<vBeam> Elements;
 		Eigen::Index eId_Last = 0;
 		//TODO: IDsorted Els and IDsorted Nodes for quick lookup.
 
 		std::vector<size_t> nodes_InMatrixOrder;
 
-		std::vector<size_t> BCpinned;//UNUSED- and going to be unused.
-		std::vector<size_t> BCfixed;
+		std::set<size_t> BCpinned;//UNUSED- and going to be unused.
+		std::set<size_t> BCfixed;
 		std::map<size_t, std::array<float, 6>> Forces;//node position to force. Position refers to All nodes, taking into account the deleted stuff.
 
 		size_t noDofs = 0;
@@ -721,7 +722,7 @@ namespace Beams {
 			addElement(4, 5, 2, 0);
 
 
-			BCfixed.push_back(0);
+			BCfixed.emplace(0);
 			Forces[4][1] = 100;
 
 		};
@@ -736,138 +737,134 @@ namespace Beams {
 			std::array<float,6> ar{ 0,0,0,0,0,0 };
 			auto it = Forces.emplace(std::make_pair(nodePos, ar));
 			it.first->second[Dof] = val;
-			
+			solved = false;
 
 		}
 
 		void solve() {
-			//PENDING CHECKING FOR CONDITIONS ETC
+
+			//----------------------------------------------------------------------------------------------------
+			//Setup 
+			//----------------------------------------------------------------------------------------------------
+			//TODO: Check for unconstrained model
+			
 			globalK_triplets.clear();
 			globalF_triplets.clear();
 			if (BCfixed.size() + BCpinned.size() < 1) {
 				solved = false;
 				return;
 			}
-
-
-			//find problem DOFs and Make unused nodes last. Initialize globMatrix.
-			//size_t noDofs = 0;
-			//size_t foundUnused = 0;
-			//size_t lastID = 0;
-
-			//std::vector<size_t> nodes_IdOrder(Nodes.size());
-			//std::iota(nodes_IdOrder.begin(), nodes_IdOrder.end(), 0);
-
-
-			////Bubble Sort Nodes Based on IDs. 
-			//bool hasSwapped = true;
-			//size_t lastUnsorted = Nodes.size();
-			//while (hasSwapped) {
-			//	hasSwapped = false;
-			//	for (int i = 0; i < lastUnsorted - 1; i++) {
-			//		if (Nodes.get(nodes_IdOrder[i]).matrixPos > Nodes.get(nodes_IdOrder[i + 1]).matrixPos) {
-			//			size_t large = nodes_IdOrder[i];
-			//			nodes_IdOrder[i] = nodes_IdOrder[i + 1];
-			//			nodes_IdOrder[i + 1] = large;
-			//			hasSwapped = true;
-			//		}
-			//	}
-			//	lastUnsorted--;
-			//}
-
-			//ON SORTED BY IDs ARRAY, put free nodes last.
-			//for (auto& pos : nodes_InMatrixOrder) {
-			//	const Node& node = Nodes.get(pos);
-			//	//ensure no gaps in Ids. not sure for this 
-			//	if (node.matrixPos - lastID > 1) {
-			//		foundUnused++;
-			//	}
-			//	lastID = node.matrixPos;
-
-			//	if (!node.free_flag) {
-			//		Nodes.setMatrixPos(node.pos ,node.matrixPos - foundUnused);
-			//		noDofs++;
-			//	}
-			//	else {
-			//		Nodes.setMatrixPos(node.pos ,Nodes.size() - 1 - foundUnused);//unused nodes go above other unused nodes in the end 
-			//		foundUnused++;
-
-			//	}
-			//}
-			
-			
-			//MATRIX POSITIONS ARE ALREADY SET FOR ALL USABLE NODES
-
-
 			if (noDofs < 1) return;
-#ifdef DEBUG_PRINTS
-			std::cout << "\n------------------------------------\nNO DOFs: " << noDofs << "\n";
-#endif // DEBUG_PRINTS
+			
+			#ifdef DEBUG_PRINTS
+				std::cout << "\n------------------------------------\nNO DOFs: " << noDofs << "\n";
+			#endif // DEBUG_PRINTS
+			
 
 
-			//populate global stigness matrix triplets -- Helper (free) Elements (not beam nodes) must have last IDs for correct placement in the matrix
-#ifdef DEBUG_PRINTS
-			Eigen::SparseMatrix<float> testGlobAll(noDofs, noDofs);
-#endif
+			//----------------------------------------------------------------------------------------------------
+			//Populate global stigness matrix (triplets) from each element
+			//----------------------------------------------------------------------------------------------------
+			#ifdef DEBUG_PRINTS
+				Eigen::SparseMatrix<float> testGlobAll(noDofs, noDofs);
+			#endif
 
 			for (auto& element : Elements) {
 				element.LocalMatrix2GlobalTriplets(globalK_triplets, Nodes, Sections[element.getSectionId()]);
 
-#ifdef DEBUG_PRINTS
+			#ifdef DEBUG_PRINTS
 				testGlobAll.setFromTriplets(globalK_triplets.begin(), globalK_triplets.end());
-#endif // DEBUG_PRINTS
+			#endif // DEBUG_PRINTS
 
 			}
 
-#ifdef DEBUG_PRINTS
+			#ifdef DEBUG_PRINTS
 				std::cout << "\n------------------------------------\n Glob Matrix noRowDeletion:\n " << Eigen::MatrixXf(testGlobAll) << "\n";
-#endif // DEBUG_PRINTS
+			#endif // DEBUG_PRINTS
 
 			size_t noDofsUsed = noDofs- 6 * (BCfixed.size()) - 3 * BCpinned.size();
 			Eigen::SparseMatrix<float> globMatr(noDofsUsed, noDofsUsed);
 
 
-			//remove rows and columns from BCs
-			//Unfortunately I Have to duplicate. Pending better solution. 
+
+			//----------------------------------------------------------------------------------------------------
+			//Stifness Marix Row/Column Elimination from BCs & create Global K Matrix
+			//----------------------------------------------------------------------------------------------------
+			//TODO: Better solution without triplet duplication. (faster?)
+			
 			std::vector<Eigen::Triplet<float>> triplets_AfterBCs;
+			std::vector<Eigen::Triplet<float>> triplets_AfterBCsALL;
 			int row, col, val;
+			int minusRow, minusCol;
+			
+
 			for (auto& triplet : globalK_triplets) {
 				row = triplet.row(); col = triplet.col(); val = triplet.value();
+				minusRow = 0; minusCol = 0; 
+				bool isInBC = false;
+
 				for (size_t fixBCid : BCfixed) {
-					if (row < fixBCid * 6 && col < fixBCid * 6) {
-						triplets_AfterBCs.emplace_back(row, col, val);
+					size_t BCstart = Nodes.get_fromAll(fixBCid).matrixPos * 6;
+					size_t BCend = Nodes.get_fromAll(fixBCid).matrixPos * 6 + 5;
+					const static size_t BCdofs = 6;
+
+					if (row > BCend) minusRow += BCdofs;//if after BC, row is BC dofs less.(row elimination.)
+					else if(row >= BCstart){ //not after BC end dof but after BC start dof means in BC dofs
+						isInBC = true;
+						break; // go to next, no matter the column
 					}
-					else if (row < fixBCid * 6 && col > fixBCid * 6 + 5) {
-						triplets_AfterBCs.emplace_back(row, col - 6, val);
+
+					if (col > BCend) minusCol+= BCdofs;
+					else if (col >= BCstart) {
+						isInBC = true;
+						break;
 					}
-					else if (row > fixBCid * 6 + 5 && col < fixBCid * 6) {
-						triplets_AfterBCs.emplace_back(row - 6, col, val);
-					}
-					else if (row > fixBCid * 6 + 5 && col > fixBCid * 6 + 5) {
-						triplets_AfterBCs.emplace_back(row - 6, col - 6, val);
-					}
+					
 				}
+				if(!isInBC) triplets_AfterBCs.emplace_back(row-minusRow, col-minusCol, val);
+			
+			//#ifdef DEBUG_PRINTS
+				if (!isInBC) triplets_AfterBCsALL.emplace_back(row, col, val);
+				else triplets_AfterBCsALL.emplace_back(row, col, -101);
+			//#endif // DEBUG_PRINTS
+			
 			}
 
-
-			//Populate globMatrix matrix from triplets
 			globMatr.setFromTriplets(triplets_AfterBCs.begin(), triplets_AfterBCs.end());
-#ifdef DEBUG_PRINTS
-			std::cout << "\n------------------------------------\n Glob Matrix after row elimination\n " << Eigen::MatrixXf(globMatr) << "\n";
-#endif // DEBUG_PRINTS
-			//std::cout << Eigen::MatrixXf(globMatr)<<std::endl;
-			F.resize(globMatr.rows());
+			
+			#ifdef DEBUG_PRINTS
+				Eigen::SparseMatrix<float> asd(noDofs, noDofs);
+				asd.setFromTriplets(triplets_AfterBCsALL.begin(), triplets_AfterBCsALL.end());
+				std::cout << "\n------------------------------------\n Glob Matrix with noted removed Rows/Colsn\n " << Eigen::MatrixXf(asd) << "\n";
+				std::cout << "\n------------------------------------\n Glob Matrix after row elimination\n " << Eigen::MatrixXf(globMatr) << "\n";
 
+			#endif // DEBUG_PRINTS
+			
+
+
+			//----------------------------------------------------------------------------------------------------
+			//F Vector Creation and Row Elimination
+			//----------------------------------------------------------------------------------------------------
+			
+			F.resize(globMatr.rows());
 
 			std::vector<Eigen::Triplet<float>> Ftriplets_AfterBCs;
 			//make forces vector 
 			for (auto& force : Forces) {
 				size_t forceMatrixPos = Nodes.get_fromAll(force.first).matrixPos*6;
+				bool inBC = false;
 
 				for (size_t BCid : BCfixed) {
-					forceMatrixPos = (BCid < forceMatrixPos) ? forceMatrixPos - 6 : forceMatrixPos;
+					size_t BCstart = Nodes.get_fromAll(BCid).matrixPos;
+					size_t BCend = Nodes.get_fromAll(BCid).matrixPos + 5;
+					if (forceMatrixPos > BCend) forceMatrixPos -= 6;
+					else if (forceMatrixPos >= BCstart) {
+						inBC = true;
+						break;
+					}
+
 				}
-				if (forceMatrixPos >= F.rows()) continue;
+				if (inBC || forceMatrixPos >= F.rows()) continue;
 
 				F.insert((Eigen::Index)forceMatrixPos) = force.second[0];
 				F.insert((Eigen::Index)forceMatrixPos + 1) = force.second[1];
@@ -877,19 +874,22 @@ namespace Beams {
 				F.insert((Eigen::Index)forceMatrixPos + 5) = force.second[5];
 
 			}
-#ifdef DEBUG_PRINTS
-			std::cout << "\n--------------------------------\nForce Matrix\n" << F << "\n";
-
-#endif // DEBUG_PRINTS
-
+			#ifdef DEBUG_PRINTS
+				std::cout << "\n--------------------------------\nForce Vector\n" << F << "\n";
+			#endif // DEBUG_PRINTS
 
 
+
+			//----------------------------------------------------------------------------------------------------
+			//Solving
+			//----------------------------------------------------------------------------------------------------
+			//TODO: Proper handling of failed solves.
 
 			Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
 			solver.compute(globMatr);
 
 			if (solver.info() == Eigen::Success) {
-				// decomposition Succesfull
+				// Decomposition Succesfull
 				std::cout << "Sparse LU Decomposition Successful\n";
 				U = solver.solve(F);
 				if (solver.info() != Eigen::Success) {
@@ -904,10 +904,10 @@ namespace Beams {
 
 				return;
 			}
-			const std::vector<int> a;
-			a.size();
+
+
 			std::cout << "Sparse LU decomposition failed\nConverting to Dense\n";
-			Eigen::MatrixXf A(globMatr);                       // DO EXCEPTION HERE if this fails Also
+			Eigen::MatrixXf A(globMatr);// DO EXCEPTION HERE if this fails Also
 			U = A.lu().solve(Eigen::VectorXf(F)).sparseView();
 			std::cout << F << "\n" << A << "\n" << U;
 			Urender.resize(U.rows());
@@ -929,8 +929,9 @@ namespace Beams {
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				if (fixedId < nodeMatrixPos) fixedNodesBefore++;
-				else if (fixedId == nodeMatrixPos) return Vector3Zero();
+				size_t BCmatrixPos = Nodes.get_fromAll(fixedId).matrixPos;
+				if (BCmatrixPos < nodeMatrixPos) fixedNodesBefore++;
+				else if (BCmatrixPos == nodeMatrixPos) return Vector3Zero();
 			}
 			size_t afterBcId = nodeMatrixPos * 6 - fixedNodesBefore * 6;
 			if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
@@ -943,7 +944,6 @@ namespace Beams {
 		Vector3 getDeflectionRender(size_t nodeMatrixPos) {//doesn't give rotations. 
 			if (!solved) return Vector3Zero();
 
-			//if (afterBcId >= U.rows()) return Vector3Zero(); //Free node, not in Stifness matrix
 			if (nodeMatrixPos >= nodes_InMatrixOrder.size()) return Vector3Zero();//not in stifness matrix
 			const Node& node = Nodes.get_fromAll(nodes_InMatrixOrder[nodeMatrixPos]);
 
@@ -951,20 +951,47 @@ namespace Beams {
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				if (fixedId < nodeMatrixPos) fixedNodesBefore++;
-				else if (fixedId == nodeMatrixPos) return Vector3Zero();
+				size_t BCmatrixPos = Nodes.get_fromAll(fixedId).matrixPos;
+				if (BCmatrixPos < nodeMatrixPos) fixedNodesBefore++;
+				else if (BCmatrixPos == nodeMatrixPos) return Vector3Zero();
 			}
+
 			size_t afterBcId = nodeMatrixPos * 6 - fixedNodesBefore * 6;
 
 			return Vector3{ Urender.coeff(afterBcId) ,Urender.coeff(afterBcId + 1) ,Urender.coeff(afterBcId + 2) };
 
 		}
 
-		Vector3 getForce(size_t nodePos) {//To be deprecated
+		Vector3 getForce(size_t nodePos) {
 			auto it = Forces.find(nodePos);
 
 			if (it == Forces.end()) return Vector3Zero();
 			return Vector3{ it->second[0],it->second[1],it->second[2] };
+		}
+
+		void removeForce(size_t nodePos) {
+			auto it = Forces.erase(nodePos);
+			solved = false;
+
+		}
+
+		const std::map<size_t, std::array<float, 6>>& getForces() {
+			return Forces;
+		}
+
+		void addBCfixed(size_t nodePos) {
+			solved = false;
+			BCfixed.emplace(nodePos);
+		}
+
+		void removeBCfixed(size_t nodePos) {
+			BCfixed.erase(nodePos);
+			solved = false;
+
+		}
+
+		const std::set<size_t>& getBCfixed() {
+			return BCfixed;
 		}
 
 		void printDeformed() {
@@ -980,6 +1007,16 @@ namespace Beams {
 				std::cout << a.x << " " << a.y << " " << a.z << " \n";
 			}
 
+		}
+
+		void printU() {
+			std::cout << Eigen::VectorXf{ U } << "\n";
+		}
+
+		
+
+		void printF() {
+			std::cout << Eigen::VectorXf{ F } << "\n";
 		}
 
 		bool isSolved() {
