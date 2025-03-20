@@ -155,14 +155,11 @@ namespace Beams {
 			//free gets set from outside here. 
 		}
 
-
-
 		void remove_InElement_fromAll(size_t pos, Eigen::Index id) {
 			Node& node = Nodes[pos];
 			node.inElements.erase(id);
 			node.free_flag = !node.inElements.size();
 		}
-
 
 		void setMatrixPos(size_t pos, Eigen::Index matPos) {
 			get_NotDeleted(pos).matrixPos = matPos;
@@ -176,6 +173,7 @@ namespace Beams {
 
 	class Section {
 	public:
+		std::vector<size_t> inElements;
 		float Area;
 		float Ixx;
 		float Izz;
@@ -193,6 +191,22 @@ namespace Beams {
 		float EIz2;
 		float EIy2;
 
+		Section() {
+			Area = 10;
+			Ixx = 10;
+			Izz = 10;
+			Iyy = 10;
+			Modulus = 10;
+			G = 10;
+			EIz12 = 12 * Modulus * Izz;
+			EIy12 = 12 * Modulus * Iyy;
+			EIz6 = 6 * Modulus * Izz;
+			EIy6 = 6 * Modulus * Iyy;
+			EIz4 = 4 * Modulus * Izz;
+			EIy4 = 4 * Modulus * Iyy;
+			EIz2 = 2 * Modulus * Izz;
+			EIy2 = 2 * Modulus * Iyy;
+		}
 
 		Section(float _Area, float _Modulus, float _G, float _Ixx, float _Iyy, float _Izz) {
 			Area = _Area;
@@ -528,7 +542,8 @@ namespace Beams {
 		//std::vector<size_t> deletedNodePos;
 		NodeContainer Nodes;
 
-		std::vector<Section> Sections;
+		std::map<size_t,Section> Sections;
+		size_t secIdNext = 0;
 
 		size_t nId_Last = 0;
 		std::vector<vBeam> Elements;
@@ -539,7 +554,7 @@ namespace Beams {
 
 		std::vector<size_t> BCpinned;//UNUSED- and going to be unused.
 		std::vector<size_t> BCfixed;
-		std::map<size_t, std::array<float, 6>> Forces;
+		std::map<size_t, std::array<float, 6>> Forces;//node position to force. Position refers to All nodes, taking into account the deleted stuff.
 
 		size_t noDofs = 0;
 
@@ -712,10 +727,11 @@ namespace Beams {
 		};
 
 		void addSection(float _Area, float _Modulus, float _G, float _Ixx, float _Iyy, float _Izz) {
-			Sections.emplace_back(_Area, _Modulus, _G, _Ixx, _Iyy, _Izz);
-
+			Sections.emplace(std::make_pair(secIdNext, Section{ _Area, _Modulus, _G, _Ixx, _Iyy, _Izz }));
+			secIdNext++;
 		}
 
+		//nodePos is the position containing deleted nodes. 
 		void addForce(size_t nodePos, size_t Dof, float val) {
 			std::array<float,6> ar{ 0,0,0,0,0,0 };
 			auto it = Forces.emplace(std::make_pair(nodePos, ar));
@@ -846,7 +862,7 @@ namespace Beams {
 			std::vector<Eigen::Triplet<float>> Ftriplets_AfterBCs;
 			//make forces vector 
 			for (auto& force : Forces) {
-				size_t forceMatrixPos = force.first * 6;
+				size_t forceMatrixPos = Nodes.get_fromAll(force.first).matrixPos*6;
 
 				for (size_t BCid : BCfixed) {
 					forceMatrixPos = (BCid < forceMatrixPos) ? forceMatrixPos - 6 : forceMatrixPos;
@@ -944,8 +960,8 @@ namespace Beams {
 
 		}
 
-		Vector3 getForce(size_t nodeMatrixPos) {//To be deprecated
-			auto it = Forces.find(nodeMatrixPos);
+		Vector3 getForce(size_t nodePos) {//To be deprecated
+			auto it = Forces.find(nodePos);
 
 			if (it == Forces.end()) return Vector3Zero();
 			return Vector3{ it->second[0],it->second[1],it->second[2] };
@@ -970,8 +986,23 @@ namespace Beams {
 			return solved;
 		}
 
+		const std::map<size_t,Section>& getSections() {
+			return Sections;
+		}
 
-
+		void modifySection(const size_t Id, float _Area, float _Modulus, float _G, float _Ixx, float _Iyy, float _Izz) {
+			auto it = Sections.find(Id);
+			if (it != Sections.end()) {
+				Section& sec = it->second;
+				
+				sec.Area = _Area;
+				sec.Izz = (_Izz < 0) ? 100 : _Izz;
+				sec.Ixx = (_Ixx < 0) ? 100 : _Ixx;
+				sec.Iyy = (_Iyy < 0) ? _Izz : _Iyy;
+				sec.Modulus = _Modulus;
+				sec.G = _G;
+			}
+		}
 	};
 };
 

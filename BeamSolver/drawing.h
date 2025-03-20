@@ -260,6 +260,25 @@ void RenderNodes(bool deformed,Beams::Model model, std::vector<size_t>& selected
 bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model);
 bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elems, std::vector<size_t>& selectedElems, Beams::Model& model);
 
+enum GuiFlags {
+    DROPDOWN_EDIT = 1<<0,
+    NODE_ADD_ACTIVE = 1<<1 ,
+    NODE_REMOVE_ACTIVE = 1<<2,
+    EL_ADD_ACTIVE = 1<<3,
+    EL_REMOVE_ACTIVE = 1<<4,
+    SHOW_NODE_INFO = 1<<5,
+    SHOW_ELEM_INFO = 1<<6,
+    SECTION_WINDOW = 1<<7,
+    FORCE_ADD_ACTIVE = 1 << 8,
+    FORCE_REMOVE_ACTIVE = 1 << 9,
+    SHOW_FORCE_INFO = 1 << 10,
+    BC_ADD_ACTIVE = 1 << 11,
+    BC_REMOVE_ACTIVE = 1 << 12,
+    SHOW_BC_INFO = 1 << 13
+
+};
+
+
 void runViewer(Beams::Model& model) {
 	Camera3D camera;
     Vector3 cubePosition = { 0.0f, 0.0f, 0.0f };
@@ -274,25 +293,23 @@ void runViewer(Beams::Model& model) {
     {
         static std::vector<size_t> selectedNodes;
         static std::vector<size_t> selectedElems;
+        static std::vector<size_t> infoNodes;
+        static std::vector<size_t> infoElems;
+
 
         static size_t pickingNodesForElems = 0;
         auto& elements = model.getElements();
         static bool deformed = false;
-        static bool pickNodesActive = false;
-        static bool pickElemsActive = false;
-        static bool showNodeInfo = false;
-        static bool showElemInfo = false;
-        static int nodeSectionEl = 0;
+
+
+        static int nodeSectionEl = 0;//Which action section (for nodes, elements, sections etc) is currently active
+        static uint32_t ActionFlags = 0; //Which action are we curently doing
 
 
         CameraControls(rotCenter, camera, objectsBoundBox);
 
         const Beams::NodeContainer& nodes = model.getNodes();
         size_t nodeSize = nodes.size();
-
-
-
-
 
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE)) {
@@ -310,56 +327,25 @@ void runViewer(Beams::Model& model) {
         if (IsKeyReleased(KEY_SPACE)) {
             deformed = !deformed;
         }
-
-        if (pickNodesActive){
+        
+        bool nodePicking = ActionFlags & (GuiFlags::NODE_REMOVE_ACTIVE | GuiFlags::EL_ADD_ACTIVE | GuiFlags::SHOW_NODE_INFO);
+        if (nodePicking) {
             PickNode(camera, nodes, selectedNodes, model);
-            pickElemsActive = false;
         }
-        if (pickElemsActive) {
+        else selectedNodes.clear();
+        
+        bool elemPicking = ActionFlags & (GuiFlags::EL_REMOVE_ACTIVE | GuiFlags::SHOW_ELEM_INFO);
+        if (elemPicking) {
             PickElem(camera, elements, selectedElems, model);
-            pickNodesActive = false;
         }
+        else selectedElems.clear();
 
 		// drawing
 		BeginDrawing();
 		// Setup the back buffer for drawing (clear color and depth buffers)
 		ClearBackground(RAYWHITE);
 
-        if (showNodeInfo) {
-            for (size_t i = 0; i < nodeSize; i++) {
-                const Beams::Node& node = nodes.get(i);
-                Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
-                
-                if (deformed) {
-
-                    nodeCoords += model.getDeflectionRender(node.matrixPos);
-                }
-                
-                Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
-                char a[20];
-                sprintf_s(a, "ID %d", (int)node.matrixPos);
-                DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
-            }
-        }
-        if (showElemInfo) {
-            for (auto& element : elements) {
-                const Beams::Node& node1 = nodes.get_fromAll(element.node1Pos);
-                const Beams::Node& node2 = nodes.get_fromAll(element.node2Pos);
-
-
-                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
-                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
-                if (deformed) {
-                    n1 += model.getDeflectionRender(node1.matrixPos);
-                    n2 += model.getDeflectionRender(node2.matrixPos);
-                }
-                Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
-                char a[20];
-                sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
-                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
-            }
-        }
-			BeginMode3D(camera);
+        BeginMode3D(camera);
 				
 
             for (auto& element : elements) {
@@ -389,28 +375,82 @@ void runViewer(Beams::Model& model) {
             
             RenderNodes(deformed,model, selectedNodes);
 			
-            EndMode3D();
+        EndMode3D();
+        
+        
+        if (GuiFlags::SHOW_NODE_INFO & ActionFlags) {
+            for (size_t i = 0; i < nodeSize; i++) {
+                const Beams::Node& node = nodes.get(i);
+                Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
 
-        if (pickingNodesForElems) {
+                if (deformed) {
+
+                    nodeCoords += model.getDeflectionRender(node.matrixPos);
+                }
+
+                Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
+                char a[20];
+                sprintf_s(a, "ID %d", (int)node.matrixPos);
+                DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
+            }
+        }
+        else {
+            for (auto infoPos : infoNodes) {
+                const Beams::Node& node = nodes.get(infoPos);
+                Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
+                Vector3 deforms = model.getDeflectionRender(node.matrixPos);
+                if (deformed) {
+                    nodeCoords += deforms;
+                }
+
+                Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
+                char a[64];
+                sprintf_s(a, "ID %d\nDeformations:\nX: %f\nY: %f\nZ: %f", (int)node.matrixPos, deforms.x, deforms.y, deforms.z);
+                DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
+            }
         }
 
-        //Check all possible UI states that require controls lock
-        //if (splineTypeEditMode || (selectedPoint != -1) || (selectedControlPoint != NULL)) GuiLock();
-        //TODO: This with flags? ENUM and bitwise thing
-        static bool dropdownEdit = false;
-        static bool NodeAddActive = false;
-        static bool NodeRemoveActive = false;
-        static bool elRemoveActive = false;
-        static bool elAddActive = false;
+        if (GuiFlags::SHOW_ELEM_INFO & ActionFlags) {
+            for (auto& element : elements) {
+                const Beams::Node& node1 = nodes.get_fromAll(element.node1Pos);
+                const Beams::Node& node2 = nodes.get_fromAll(element.node2Pos);
 
-        if (dropdownEdit) GuiLock();
 
-        if (NodeAddActive)
+                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
+                if (deformed) {
+                    n1 += model.getDeflectionRender(node1.matrixPos);
+                    n2 += model.getDeflectionRender(node2.matrixPos);
+                }
+                Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
+                char a[20];
+                sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
+                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
+            }
+        }
+        else {
+            for (auto infoPos : infoElems) {
+                const Beams::Node& node1 = nodes.get_fromAll(elements[infoPos].node1Pos);
+                const Beams::Node& node2 = nodes.get_fromAll(elements[infoPos].node2Pos);
+
+
+                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
+                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
+                if (deformed) {
+                    n1 += model.getDeflectionRender(node1.matrixPos);
+                    n2 += model.getDeflectionRender(node2.matrixPos);
+                }
+                Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
+                char a[20];
+                sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
+                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
+            }
+        }
+
+        if (GuiFlags::DROPDOWN_EDIT & ActionFlags ) GuiLock();
+
+        if (GuiFlags::NODE_ADD_ACTIVE & ActionFlags)
         {
-            NodeRemoveActive = false;
-            elAddActive = false;
-            elRemoveActive = false;
-
             static int xNew;
             static int yNew;
             static int zNew;
@@ -420,15 +460,15 @@ void runViewer(Beams::Model& model) {
             static bool zNeg = false;
             static bool spin = false;
 
-            NodeAddActive = !GuiWindowBox(Rectangle{ 440, 24, 288, 136 }, "AddNode");
-            if (GuiValueBox(Rectangle{ 464, 56, 56, 24 }, "X", &xNew, 0, 100, xActive)) xActive = !xActive;
-            if (GuiValueBox(Rectangle{ 464, 88, 56, 24 }, "Y", &yNew, 0, 100, yActive)) yActive = !yActive;
-            if (GuiValueBox(Rectangle{ 464, 120, 56, 24 }, "Z", &zNew, 0, 100, zActive)) zActive = !zActive;
-                GuiCheckBox(Rectangle{ 536, 56, 24, 24 }, "Neg", &xNeg);
-            GuiCheckBox(Rectangle{ 536, 88, 24, 24 }, "Neg", &yNeg);
-            GuiCheckBox(Rectangle{ 536, 120, 24, 24 }, "Neg", &zNeg);
+            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "AddNode")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
+            if (GuiValueBox(Rectangle{ 444, 56 - 13, 56, 24 }, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
+            if (GuiValueBox(Rectangle{ 444, 88 - 13, 56, 24 }, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
+            if (GuiValueBox(Rectangle{ 444, 120 - 13, 56, 24 }, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
+                GuiCheckBox(Rectangle{ 516, 56 - 13, 24, 24 }, "Neg", &xNeg);
+                GuiCheckBox(Rectangle{ 516, 88 - 13, 24, 24 }, "Neg", &yNeg);
+                GuiCheckBox(Rectangle{ 516, 120 - 13, 24, 24 }, "Neg", &zNeg);
         
-            if (GuiButton(Rectangle{ 592, 88, 120, 24 }, "ADD NODE!")){
+            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD NODE!")){
                 //NodeAddActive = false;
                 xNew = (xNeg) ? -xNew : xNew;
                 yNew = (yNeg) ? -yNew : yNew;
@@ -437,50 +477,87 @@ void runViewer(Beams::Model& model) {
             }
         }
         
-        if (NodeRemoveActive) {
+        if (GuiFlags::NODE_REMOVE_ACTIVE & ActionFlags) {
             {
-                NodeAddActive = false;
-                elAddActive = false;
-                elRemoveActive = false;
                 deformed = false;
 
                 static bool toggleActive = false;
-                NodeRemoveActive = !GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveNode");
-
-                //GuiListView(Rectangle{ 440, 40, 416, 64 }, "ONE;TWO;THREE", & ListView011ScrollIndex, & ListView011Active);
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")){
+                if(GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveNode")) ActionFlags &= ~GuiFlags::NODE_REMOVE_ACTIVE;
+                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected.\nNodes also remove Elements.");
+                
+                if(GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")){
                     for (size_t selected : selectedNodes) {
                         model.removeNode(selected);
                     }
                     selectedNodes.clear();
-
                 };
-                GuiToggle(Rectangle{ 440, 112, 120, 24 }, "TOGGLE PICK", &pickNodesActive);
+
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                    selectedNodes.clear();
+                }
             }
         }
         
-        if (elAddActive) {
-            NodeAddActive = false;
-            NodeRemoveActive = false;
-            elRemoveActive = false;
+        if (GuiFlags::SHOW_NODE_INFO& ActionFlags) {
+            {
+                deformed = false;
+                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Node Information")) ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
+                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick SELECT to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
+                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "SELECT")) {
+                    for (size_t selected : selectedNodes) {
+                        infoNodes.push_back(selected);
+                    }
+                    selectedNodes.clear();
+                    ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
+                };
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                    selectedNodes.clear();
+                    infoNodes.clear();
+                }
+            }
+        }
+
+        if (GuiFlags::EL_ADD_ACTIVE & ActionFlags) {
             deformed = false;
 
-            //PickNodes_ForElement(camera, pickingNodesForElems, nodes, selectedNodes, model);
-            DrawText("Pick Nodes While Holding Shift", 400, 200, 20, RED);
+            //DrawText("Pick Nodes While Holding Shift", 400, 200, 20, RED);
+            static int sectionId = 0;
+            static int ListViewTop = 0;
+            auto& sections = model.getSections();
             
+            std::string listNames;
+
+            for (auto section : sections) {
+                listNames += std::to_string(section.first);
+                listNames += ";";
+            }
+            if (listNames.size() > 0) listNames.erase(listNames.size() - 1);
+
+
+            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Create Element")) ActionFlags &= ~GuiFlags::EL_ADD_ACTIVE;
+            GuiListView(Rectangle{ 432, 40, 120, 96 }, listNames.data(), &ListViewTop, &sectionId);
+            //std::string info = "Pick 3 nodes and the corresponding section.";
+            GuiLabel(Rectangle{ 576, 40, 250, 40 }, "Pick 3 nodes and the corresponding section.\n Section properties can be managed in \"Sections\" from the dropdown");
+            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD ELEMENT")) {
+                //NodeAddActive = false;
+                model.addElement(nodes.get(selectedNodes[0]).pos, nodes.get(selectedNodes[1]).pos, nodes.get(selectedNodes[2]).pos,static_cast<size_t>(sectionId));
+                selectedNodes.clear();
+            }
+
+
+
+            if (selectedNodes.size() > 3) selectedNodes.pop_back();
+
+
         }
         
-        if (elRemoveActive) {
+        if (GuiFlags::EL_REMOVE_ACTIVE & ActionFlags) {
             {
-                NodeAddActive = false;
-                NodeRemoveActive = false;
-                elAddActive = false;
+
                 deformed = false;
 
-                static bool toggleActive = false;
-                elRemoveActive = !GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveElement");
-
-                //GuiListView(Rectangle{ 440, 40, 416, 64 }, "ONE;TWO;THREE", & ListView011ScrollIndex, & ListView011Active);
+                if(GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveElement")) ActionFlags &= ~GuiFlags::EL_REMOVE_ACTIVE;
+                GuiLabel(Rectangle{ 436, 40 , 400, 40 }, "Pick elements with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick Remove to remove selected.");
                 if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
                     for (size_t selected : selectedElems) {
                         model.removeElement(selected);
@@ -488,41 +565,155 @@ void runViewer(Beams::Model& model) {
                     selectedElems.clear();
 
                 };
-                GuiToggle(Rectangle{ 440, 112, 120, 24 }, "TOGGLE PICK", &pickElemsActive);
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                    selectedElems.clear();
+                }
+                //GuiToggle(Rectangle{ 440, 112, 120, 24 }, "TOGGLE PICK", &pickElemsActive);
             }
         }
 
+        if (GuiFlags::SHOW_ELEM_INFO & ActionFlags) {
+            {
 
-        GuiLabel(Rectangle{12, 10, 140, 24 }, "Spline type:");
-        if (GuiDropdownBox(Rectangle{ 12, 8 + 24, 140, 28 }, "NODES;ELEMENTS;SECTIONS;FORCES;BCs", &nodeSectionEl, dropdownEdit)) dropdownEdit = !dropdownEdit;
+                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Element Information")) ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
+                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "Select")) {
+                    for (size_t selected : selectedElems) {
+                        infoElems.push_back(selected);
+                        //model.removeNode(selected);
+                    }
+                    selectedElems.clear();
+                    ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
+
+                };
+                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "Clear")) {
+                    selectedElems.clear();
+                    infoElems.clear();
+                }
+            }
+        }
+
+        if (GuiFlags::SECTION_WINDOW & ActionFlags) {
+            static int A = 0;
+            static int Ixx = 0;
+            static int Iyy = 0;
+            static int Izz = 0;
+            static int E = 0;
+            static int G = 0;
+            static bool A_Active = false;
+            static bool Ixx_Active = false;
+            static bool Iyy_Active = false;
+            static bool Izz_Active = false;
+            static bool E_Active = false;
+            static bool G_Active = false;
+
+            static int prevSectionId = -1;
+            static int sectionId = 0;
+            static int ListViewTop = 0;
+            auto& sections = model.getSections();
+            bool ReadSectionInfo = prevSectionId == sectionId;
+            if (!ReadSectionInfo) prevSectionId = sectionId;
+            if (!ReadSectionInfo && sections.find(static_cast<int>(sectionId)) != sections.end()) {
+                A = sections.find(static_cast<size_t>(sectionId))->second.Area;
+                Ixx = sections.find(static_cast<size_t>(sectionId))->second.Ixx;
+                Iyy = sections.find(static_cast<size_t>(sectionId))->second.Iyy;
+                Izz = sections.find(static_cast<size_t>(sectionId))->second.Izz;
+                E = sections.find(static_cast<size_t>(sectionId))->second.Modulus;
+                G = sections.find(static_cast<size_t>(sectionId))->second.G;
+                
+            }
+            
+            
+            
+            
+
+            std::string listNames;
+            for (auto section : sections) {
+                listNames += std::to_string(section.first);
+                listNames += ";";
+            }
+            if (listNames.size() > 0) listNames.erase(listNames.size() - 1);
+
+
+            if(GuiWindowBox(Rectangle { 424, 8, 448, 136 }, "Sections")) ActionFlags &= ~GuiFlags::SECTION_WINDOW;
+            GuiListView(Rectangle{ 432, 40, 120, 96 }, listNames.data(), & ListViewTop, & sectionId);
+            if (GuiValueBox(Rectangle{ 576, 40, 56, 24 }, "Area", &A, 0, 1000000, A_Active)) A_Active = !A_Active;
+            if (GuiValueBox(Rectangle{ 576, 76, 56, 24 }, "Iyy", &Iyy, 0, 1000000, Iyy_Active)) Iyy_Active = !Iyy_Active;
+            if (GuiValueBox(Rectangle{ 576, 112, 56, 24 }, "E", &E, 0, 1000000, E_Active)) E_Active = !E_Active;
+            if (GuiValueBox(Rectangle{ 656, 40, 56, 24 }, "Ixx", &Ixx, 0, 1000000, Ixx_Active)) Ixx_Active = !Ixx_Active;
+            if (GuiValueBox(Rectangle{ 656, 76, 56, 24 }, "Izz", &Izz, 0, 1000000, Izz_Active)) Izz_Active = !Izz_Active;
+            if (GuiValueBox(Rectangle{ 656, 112, 56, 24 }, "G", &G, 0, 1000000, G_Active)) G_Active = !G_Active;
+            if (GuiButton(Rectangle{ 728, 76, 64, 24 }, "ADD")) {
+                model.addSection(A, E, G, Ixx, Iyy, Izz);
+
+            }
+            if(GuiButton(Rectangle{ 728, 112, 64, 24 }, "SAVE") && sections.size()>0){
+                model.modifySection(sectionId, A, E, G, Ixx, Iyy, Izz);
+            }
+            
+
+        }
+
+        GuiLabel(Rectangle{12, 10, 140, 24 }, "Control:");
+        if (GuiDropdownBox(Rectangle{ 12, 8 + 24, 140, 28 }, "NODES;ELEMENTS;SECTIONS;FORCES;BCs", &nodeSectionEl, ActionFlags & GuiFlags::DROPDOWN_EDIT)) ActionFlags ^= GuiFlags::DROPDOWN_EDIT;
         if (GuiButton(Rectangle{ 12, 700, 140, 28 }, "Solve!")) {
             model.solve();
         }
         if (nodeSectionEl == 0) {
             if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
-                NodeAddActive = true;
-                NodeRemoveActive = false;
-                elAddActive = false;
-
+                ActionFlags = GuiFlags::NODE_ADD_ACTIVE;
             }
-            //REMOVE GETS FUCKED WHEN CHOOSING ELEMENTS
+
             if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
-                NodeRemoveActive = true;
-                NodeAddActive = false;
+                ActionFlags = GuiFlags::NODE_REMOVE_ACTIVE;
             }
 
-            GuiToggle(Rectangle{ 24 + 140 + 62+62, 8 + 24, 50, 28 }, "INFO", & showNodeInfo);
+            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+                ActionFlags = GuiFlags::SHOW_NODE_INFO;
+                for (auto infoPos : infoNodes) {
+                    selectedNodes.push_back(infoPos);
+                }
+            }
+
         }
-        if (nodeSectionEl == 1) {  
-            GuiToggle(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD", & elAddActive);
+        else if (nodeSectionEl == 1) {  
+            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+                ActionFlags = GuiFlags::EL_ADD_ACTIVE ;
+            }
+
             if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
-                NodeRemoveActive = false;
-                NodeAddActive = false;
-                elRemoveActive = true;
+                ActionFlags = GuiFlags::EL_REMOVE_ACTIVE;
             }
-            GuiToggle(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO", & showElemInfo);
+
+            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+                ActionFlags = GuiFlags::SHOW_ELEM_INFO;
+                for (auto infoPos : infoElems) {
+                    selectedElems.push_back(infoPos);
+                }
+            }
+        }
+        else if (nodeSectionEl == 2) {
+            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "MANAGE")) {
+                ActionFlags = GuiFlags::SECTION_WINDOW;
+            }
+           
         }
 
+        else if (nodeSectionEl == 3) {
+            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+                ActionFlags = GuiFlags::EL_ADD_ACTIVE;
+            }
+
+            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+                ActionFlags = GuiFlags::EL_REMOVE_ACTIVE;
+            }
+
+            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+                ActionFlags = GuiFlags::SHOW_ELEM_INFO;
+                for (auto infoPos : infoElems) {
+                    selectedElems.push_back(infoPos);
+                }
+            }
+        }
 
 
         GuiUnlock();
@@ -630,71 +821,6 @@ bool PickElem(const Camera3D& camera, const std::vector<Beams::vBeam>& elements,
 }
 
 
-//void PickNodes_ForElement(const Camera3D& camera, size_t& pickingNodesForElems, const Beams::NodeContainer& nodes, std::vector<size_t>& selectedNodes, Beams::Model& model)
-//{
-//    if (IsKeyDown(KEY_LEFT_SHIFT) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-//        Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-//        RayCollision collision;
-//        /*for (auto& node : nodes) {
-//        for (size_t i = 0; i < nodes.size(); i++) {
-//        Vector3 nodeCenter{ nodes[i].xRender ,nodes[i].yRender ,nodes[i].zRender };
-//        collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-//        if (collision.hit) {
-//
-//        selectedNodes.push_back(i);
-//        }
-//        }
-//        }*/
-//
-//        if (pickingNodesForElems == 0) {
-//            for (size_t i = 0; i < nodes.size(); i++) {
-//
-//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
-//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-//                if (collision.hit) {
-//                    pickingNodesForElems = 1;
-//                    selectedNodes.push_back(i);
-//                    std::cout << "Picked 1";
-//                    break;
-//                }
-//            }
-//        }
-//        else if (pickingNodesForElems == 1) {
-//            for (size_t i = 0; i < nodes.size(); i++) {
-//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender };
-//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-//                if (collision.hit) {
-//                    pickingNodesForElems = 2;
-//                    selectedNodes.push_back(i);
-//                    std::cout << "Picked 2";
-//                    break;
-//
-//                }
-//            }
-//        }
-//        else if (pickingNodesForElems == 2) {
-//            for (size_t i = 0; i < nodes.size(); i++) {
-//                Vector3 nodeCenter{ nodes[i].xRender,nodes[i].yRender,nodes[i].zRender};
-//                collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
-//                if (collision.hit) {
-//                    pickingNodesForElems = 3;
-//                    model.addElement(selectedNodes[0], selectedNodes[1], i,0);//<---------------------- FIX THIS! FIX!!!!
-//                    selectedNodes.clear();
-//                    std::cout << "Picked 3";
-//                    break;
-//
-//                }
-//            }
-//
-//        }
-//    }
-//    else if (IsKeyUp(KEY_LEFT_SHIFT)) {
-//        pickingNodesForElems = 0;
-//        selectedNodes.clear();
-//
-//    }
-//}
-
 void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
 {
     const Beams::NodeContainer& nodes = model.getNodes();
@@ -705,17 +831,13 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
         const Beams::Node& node = nodes.get(i);
         Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender  };
         
-        /*if (node.free_flag) { 
-            DrawSphere(nodeCoords, 0.15f, RED);
-            continue; 
-        }*/
 
         if (deformed) {
             nodeCoords += model.getDeflectionRender(node.matrixPos);
         }
         DrawSphere(nodeCoords, 0.15f, RED);
 
-        Vector3 force = model.getForce(node.matrixPos); 
+        Vector3 force = model.getForce(node.pos); 
         force = Vector3Normalize(force);
         Vector3 forceEndpoint = Vector3Add(nodeCoords, force);
         if (force.x  + force.y + force.z > 0.001) {
