@@ -15,6 +15,7 @@
 //Make more efficient triplet changes. For now it is a vector that gets reevaluated at analyse.
 //Make all stifness matrices only triangular stuff
 #include "raylib.h"
+#include <algorithm>
 //float error tolerance
 #define ERR_TOLERANCE 0.000000001
 #define RENDER_SCALING_FACTOR 0.1
@@ -88,7 +89,39 @@ namespace Beams {
 		}
 
 	public:
+		class Iterator {
 
+		public:
+
+			using iterator_category = std::forward_iterator_tag;
+			using difference_type = std::ptrdiff_t;
+			using value_type = int;
+			using pointer = int*;
+			using reference = int&;
+
+			explicit Iterator(pointer ptr,std::set<size_t>& deleted, size_t pos) : m_ptr(ptr),m_deleted(deleted),m_pos(pos) {}
+
+			reference operator*() const { return *m_ptr; }
+			pointer operator->() { return m_ptr; }
+			Iterator& operator++() { 
+				m_ptr++; 
+				m_pos++;
+				while (m_deleted.find(m_pos) != m_deleted.end()) {
+					m_pos++;
+					m_ptr++;
+				}
+				
+				return *this; 
+			}
+			Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
+			friend bool operator== (const Iterator& a, const Iterator& b) { return a.m_ptr == b.m_ptr; };
+			friend bool operator!= (const Iterator& a, const Iterator& b) { return a.m_ptr != b.m_ptr; };
+		private:	
+			pointer m_ptr;
+			std::set<size_t>& m_deleted;
+			size_t m_pos;
+		};
+		
 		void emplace(Vector3& point) {
 			if (deleted.size() > 0) {
 				auto firstIt = deleted.begin();
@@ -125,18 +158,19 @@ namespace Beams {
 
 		//Returns nth not deleted node. For iterations
 		const Node& get(size_t pos) const {
-			auto it = deleted.find(pos);
 			auto endIt = deleted.end();
-			while (it != endIt) {
-				pos++;
-				it = deleted.find(pos);
+			
+			size_t undeleted = (deleted.begin() == deleted.end()) ? 0 :  *deleted.begin();
+			for (size_t i = undeleted; i <= pos; i++) {
+				if (deleted.find(i) != deleted.end()) pos++;
 			}
+
 			return Nodes[pos];
 
 		}
 
 		//Returns Node despite if its deleted or not. For Elements
-		const Node& get_fromAll(size_t pos) const {
+		const Node& get_byPos(size_t pos) const {
 			return Nodes[pos];
 		}
 
@@ -239,7 +273,6 @@ namespace Beams {
 		//make properties for common stifness matrices
 		size_t sectionId;
 
-		//TODO: CHECK THAT MATRIX COMPUTES CORRECTLY
 		void calc_BMatrixTEST() {
 			float Area = 100;
 			float Izz = 100;
@@ -434,15 +467,16 @@ namespace Beams {
 			return id;
 		}
 
-		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets, NodeContainer& Nodes, Section& section) {//TODO: refactor stupid get_fromAll function calls. Put this in model
+		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets, NodeContainer& Nodes, Section& section) {
+			//TODO: refactor stupid get_fromAll function calls. Put this in model
 			//using direction cosine matrix because reasons and it works also and no gimbal lock or whatever this stuff is 
 			static const Eigen::Vector3d xAxis(1, 0, 0);
 			static const Eigen::Vector3d yAxis(0, 1, 0);
 			static const Eigen::Vector3d zAxis(0, 0, 1);
 
 
-			Eigen::Vector3d localX_unit(Nodes.get_fromAll(node2Pos).x - Nodes.get_fromAll(node1Pos).x, Nodes.get_fromAll(node2Pos).y - Nodes.get_fromAll(node1Pos).y, Nodes.get_fromAll(node2Pos).z - Nodes.get_fromAll(node1Pos).z);
-			Eigen::Vector3d localY_unit(Nodes.get_fromAll(node3Pos).x - Nodes.get_fromAll(node1Pos).x, Nodes.get_fromAll(node3Pos).y - Nodes.get_fromAll(node1Pos).y, Nodes.get_fromAll(node3Pos).z - Nodes.get_fromAll(node1Pos).z);//a vector in XY local plane
+			Eigen::Vector3d localX_unit(Nodes.get_byPos(node2Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node2Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node2Pos).z - Nodes.get_byPos(node1Pos).z);
+			Eigen::Vector3d localY_unit(Nodes.get_byPos(node3Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node3Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node3Pos).z - Nodes.get_byPos(node1Pos).z);//a vector in XY local plane
 			Eigen::Vector3d localZ_unit;
 
 
@@ -479,8 +513,8 @@ namespace Beams {
 			Eigen::SparseMatrix<float> globalB = cosMatrix * localBmatrix * (cosMatrix.transpose());
 			//std::cout << Eigen::MatrixXf(globalB);
 
-			Eigen::Index nid1 = Nodes.get_fromAll(node1Pos).matrixPos;
-			Eigen::Index nid2 = Nodes.get_fromAll(node2Pos).matrixPos;
+			Eigen::Index nid1 = Nodes.get_byPos(node1Pos).matrixPos;
+			Eigen::Index nid2 = Nodes.get_byPos(node2Pos).matrixPos;
 
 			for (int k = 0; k < 6; ++k)
 			{
@@ -546,10 +580,8 @@ namespace Beams {
 		std::map<size_t,Section> Sections;
 		size_t secIdNext = 0;
 
-		//size_t nId_Last = 0;
 		std::vector<vBeam> Elements;
 		Eigen::Index eId_Last = 0;
-		//TODO: IDsorted Els and IDsorted Nodes for quick lookup.
 
 		std::vector<size_t> nodes_InMatrixOrder;
 
@@ -564,6 +596,9 @@ namespace Beams {
 		//Done here to only do it once and not every frame.
 		Eigen::SparseVector<float> Urender;
 		float scaleFactor = 1; //scale Happens Here As Well to do it once and not in every frame
+		
+
+		
 
 	public:
 
@@ -575,28 +610,29 @@ namespace Beams {
 			Nodes.emplace(point);
 		}
 
-
 		//remove node from nth position 
-		void removeNode(size_t pos) {
-			const Node& node =  Nodes.get(pos);
-
+		void removeNode_RenderOrder(size_t renderedpos) {
+			const Node& node =  Nodes.get(renderedpos);
+			size_t pos = node.pos;
 			size_t elPos = 0;
-			std::set<size_t> toRemove;//we will remove from end to beginning. 
+			std::set<size_t> toRemove;//Remove from end to beginning. 
 			for (auto& element : Elements) {//iterate elements only once. TODO: change with removeElementId when you do binary search
 				if (std::find(node.inElements.begin(), node.inElements.end(), element.getID()) != node.inElements.end()) {
 					toRemove.insert(elPos);
-
 				}
 				elPos++;
 			}
 			for (auto rit = toRemove.rbegin(); rit != toRemove.rend(); rit++) {
-				removeElement(*rit);
+ 				removeElement(*rit);
 			}
 
 			auto it = Forces.find(pos);
 			if (it != Forces.end()) {
 				Forces.erase(it);
 			}
+
+			auto itB = BCfixed.find(pos);
+			if (itB != BCfixed.end()) BCfixed.erase(itB);
 
 			Nodes.remove(pos);	
 		}
@@ -607,7 +643,7 @@ namespace Beams {
 			solved = false;
 
 
-			Elements.emplace_back(eId_Last, Nodes.get_fromAll(n1Pos), Nodes.get_fromAll(n2Pos), Nodes.get_fromAll(n3Pos), sectionID, Sections[sectionID]);
+			Elements.emplace_back(eId_Last, Nodes.get_byPos(n1Pos), Nodes.get_byPos(n2Pos), Nodes.get_byPos(n3Pos), sectionID, Sections[sectionID]);
 
 
 			//get whether the element's nodes were not used in the stifness matrix
@@ -662,7 +698,7 @@ namespace Beams {
 		}
 
 		bool removeElement(size_t ePos) {
-			if (ePos > Elements.size()) return false;
+			if (ePos >= Elements.size()) return false;
 
 			vBeam& el = Elements[ePos];
 
@@ -675,21 +711,28 @@ namespace Beams {
 
 
 			//Housekeeping for node DOFs order. 
-			const Node& n1 = Nodes.get_fromAll(el.node1Pos);
+			//TODO: Make this more efficient, not passsing twice each time 
+			const Node& n1 = Nodes.get_byPos(el.node1Pos);
+			const Node& n2 = Nodes.get_byPos(el.node2Pos);
+
 			if (n1.free_flag) {//it became free now
 				for (size_t i = n1.matrixPos+1; i < nodes_InMatrixOrder.size(); i++) {
 					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_fromAll(nextNodePos,Nodes.get_fromAll(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+					Nodes.setMatrixPos_fromAll(nextNodePos,Nodes.get_byPos(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
 				}
 				noDofs -= 6;
+				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n1.matrixPos);
+				Nodes.setMatrixPos_fromAll(n1.pos, -1);
 			}
-			const Node& n2 = Nodes.get_fromAll(el.node2Pos);
 			if (n2.free_flag) {//it became free now
 				for (size_t i = n2.matrixPos + 1; i < nodes_InMatrixOrder.size(); i++) {
 					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_fromAll(nextNodePos, Nodes.get_fromAll(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+					Nodes.setMatrixPos_fromAll(nextNodePos, Nodes.get_byPos(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
 				}
 				noDofs -= 6;
+				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n2.matrixPos);
+				Nodes.setMatrixPos_fromAll(n2.pos, -1);
+
 			}
 
 
@@ -804,8 +847,8 @@ namespace Beams {
 				bool isInBC = false;
 
 				for (size_t fixBCid : BCfixed) {
-					size_t BCstart = Nodes.get_fromAll(fixBCid).matrixPos * 6;
-					size_t BCend = Nodes.get_fromAll(fixBCid).matrixPos * 6 + 5;
+					size_t BCstart = Nodes.get_byPos(fixBCid).matrixPos * 6;
+					size_t BCend = Nodes.get_byPos(fixBCid).matrixPos * 6 + 5;
 					const static size_t BCdofs = 6;
 
 					if (row > BCend) minusRow += BCdofs;//if after BC, row is BC dofs less.(row elimination.)
@@ -851,12 +894,12 @@ namespace Beams {
 			std::vector<Eigen::Triplet<float>> Ftriplets_AfterBCs;
 			//make forces vector 
 			for (auto& force : Forces) {
-				size_t forceMatrixPos = Nodes.get_fromAll(force.first).matrixPos*6;
+				size_t forceMatrixPos = Nodes.get_byPos(force.first).matrixPos*6;
 				bool inBC = false;
 
 				for (size_t BCid : BCfixed) {
-					size_t BCstart = Nodes.get_fromAll(BCid).matrixPos;
-					size_t BCend = Nodes.get_fromAll(BCid).matrixPos + 5;
+					size_t BCstart = Nodes.get_byPos(BCid).matrixPos;
+					size_t BCend = Nodes.get_byPos(BCid).matrixPos + 5;
 					if (forceMatrixPos > BCend) forceMatrixPos -= 6;
 					else if (forceMatrixPos >= BCstart) {
 						inBC = true;
@@ -929,7 +972,7 @@ namespace Beams {
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				size_t BCmatrixPos = Nodes.get_fromAll(fixedId).matrixPos;
+				size_t BCmatrixPos = Nodes.get_byPos(fixedId).matrixPos;
 				if (BCmatrixPos < nodeMatrixPos) fixedNodesBefore++;
 				else if (BCmatrixPos == nodeMatrixPos) return Vector3Zero();
 			}
@@ -945,13 +988,13 @@ namespace Beams {
 			if (!solved) return Vector3Zero();
 
 			if (nodeMatrixPos >= nodes_InMatrixOrder.size()) return Vector3Zero();//not in stifness matrix
-			const Node& node = Nodes.get_fromAll(nodes_InMatrixOrder[nodeMatrixPos]);
+			const Node& node = Nodes.get_byPos(nodes_InMatrixOrder[nodeMatrixPos]);
 
 			if (node.free_flag) return Vector3Zero();
 
 			size_t fixedNodesBefore = 0;
 			for (size_t fixedId : BCfixed) {
-				size_t BCmatrixPos = Nodes.get_fromAll(fixedId).matrixPos;
+				size_t BCmatrixPos = Nodes.get_byPos(fixedId).matrixPos;
 				if (BCmatrixPos < nodeMatrixPos) fixedNodesBefore++;
 				else if (BCmatrixPos == nodeMatrixPos) return Vector3Zero();
 			}
@@ -981,6 +1024,7 @@ namespace Beams {
 
 		void addBCfixed(size_t nodePos) {
 			solved = false;
+			if (Nodes.get_byPos(nodePos).free_flag) return;
 			BCfixed.emplace(nodePos);
 		}
 
@@ -1012,8 +1056,6 @@ namespace Beams {
 		void printU() {
 			std::cout << Eigen::VectorXf{ U } << "\n";
 		}
-
-		
 
 		void printF() {
 			std::cout << Eigen::VectorXf{ F } << "\n";
