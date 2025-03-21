@@ -320,8 +320,9 @@ void runViewer(Beams::Model& model) {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE)) {
             Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            for (size_t i = 0; i < nodeSize; i++) {
-                const Beams::Node& node = nodes.get(i);
+            //for (size_t i = 0; i < nodeSize; i++) {
+            for(auto& notDeletedIt : nodes) {
+                const Beams::Node& node = notDeletedIt;
                 Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
                 RayCollision collision = GetRayCollisionSphere(ray, nodeCenter, 0.15f);
                 if (collision.hit) {
@@ -469,8 +470,8 @@ void getGuiActionsInput(int& nodeSectionEl, uint32_t& ActionFlags, Beams::Model&
 void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::NodeContainer& nodes, bool& deformed, Beams::Model& model, const Camera3D& camera, std::vector<size_t>& infoNodes, const std::vector<Beams::vBeam>& elements, std::vector<size_t>& infoElems, std::vector<size_t>& selectedNodes, std::vector<size_t>& selectedElems)
 {
     if (GuiFlags::SHOW_NODE_INFO & ActionFlags) {
-        for (size_t i = 0; i < nodeSize; i++) {
-            const Beams::Node& node = nodes.get(i);
+        for (auto& notDeleted : nodes) {
+            const Beams::Node& node = notDeleted;
             Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
 
             if (deformed) {
@@ -906,8 +907,8 @@ bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::ve
         Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
         RayCollision collision;
 
-        for (size_t i = 0; i < nodes.size(); i++) {
-            const Beams::Node& node = nodes.get(i);
+        for (auto& notDeleted : nodes) {
+            const Beams::Node& node = notDeleted;
             Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
             if (deformed) {
                 nodeCenter += model.getDeflectionRender(node.matrixPos);
@@ -924,8 +925,8 @@ bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::ve
         Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
         RayCollision collision;
 
-        for (size_t i = 0; i < nodes.size(); i++) {
-            const Beams::Node& node = nodes.get(i);
+        for (auto& notDeleted: nodes) {
+            const Beams::Node& node = notDeleted;
             Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
             if (deformed) {
                 nodeCenter += model.getDeflectionRender(node.matrixPos);
@@ -996,8 +997,8 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
 
     size_t nodeSize = nodes.size();
 
-    for (size_t i = 0; i < nodeSize; i ++) {
-        const Beams::Node& node = nodes.get(i);
+    for (auto& notDeleted : nodes) {
+        const Beams::Node& node = notDeleted;
         Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender  };
         
 

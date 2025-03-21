@@ -89,39 +89,45 @@ namespace Beams {
 		}
 
 	public:
-		class Iterator {
+		class notDeleted_const_iterator {
 
 		public:
-
-			using iterator_category = std::forward_iterator_tag;
+			using iterator_category = std::forward_iterator_tag; 
 			using difference_type = std::ptrdiff_t;
-			using value_type = int;
-			using pointer = int*;
-			using reference = int&;
+			using value_type = const Node;
+			using pointer =  const Node*;
+			using reference =  const Node&;
 
-			explicit Iterator(pointer ptr,std::set<size_t>& deleted, size_t pos) : m_ptr(ptr),m_deleted(deleted),m_pos(pos) {}
+			explicit notDeleted_const_iterator(const std::vector<Node>& nodes, const std::set<size_t>& deleted, size_t pos) : m_nodes(nodes), m_deleted(deleted), m_pos(pos) {}
 
-			reference operator*() const { return *m_ptr; }
-			pointer operator->() { return m_ptr; }
-			Iterator& operator++() { 
-				m_ptr++; 
+			reference operator*() const { return m_nodes[m_pos]; }
+			//pointer operator->() { return m_ptr; }
+			notDeleted_const_iterator& operator++() { 
+				//m_ptr++; 
 				m_pos++;
 				while (m_deleted.find(m_pos) != m_deleted.end()) {
 					m_pos++;
-					m_ptr++;
+					//m_ptr++;
 				}
 				
 				return *this; 
 			}
-			Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
-			friend bool operator== (const Iterator& a, const Iterator& b) { return a.m_ptr == b.m_ptr; };
-			friend bool operator!= (const Iterator& a, const Iterator& b) { return a.m_ptr != b.m_ptr; };
+			notDeleted_const_iterator operator++(int) { notDeleted_const_iterator tmp = *this; ++(*this); return tmp; }
+			friend bool operator== (const notDeleted_const_iterator& a, const notDeleted_const_iterator& b) { return a.m_pos == b.m_pos; };
+			friend bool operator!= (const notDeleted_const_iterator& a, const notDeleted_const_iterator& b) { return a.m_pos != b.m_pos; };
 		private:	
-			pointer m_ptr;
-			std::set<size_t>& m_deleted;
+			//pointer m_ptr;
+			const std::vector<Node> m_nodes;
+			const std::set<size_t>& m_deleted;
 			size_t m_pos;
 		};
 		
+		notDeleted_const_iterator begin() const {  
+
+			return notDeleted_const_iterator(Nodes, deleted, 0+(!size() * Nodes.size())); 
+		}
+		notDeleted_const_iterator end() const { return notDeleted_const_iterator(Nodes, deleted, Nodes.size()); }
+
 		void emplace(Vector3& point) {
 			if (deleted.size() > 0) {
 				auto firstIt = deleted.begin();
@@ -144,7 +150,6 @@ namespace Beams {
 
 		}
 
-
 		void remove(size_t pos) {
 			if (pos >= Nodes.size()) return;
 			deleted.insert(pos);
@@ -157,7 +162,7 @@ namespace Beams {
 		}
 
 		//Returns nth not deleted node. For iterations
-		const Node& get(size_t pos) const {
+		const Node& get_notDeleted(size_t pos) const {
 			auto endIt = deleted.end();
 			
 			size_t undeleted = (deleted.begin() == deleted.end()) ? 0 :  *deleted.begin();
@@ -1039,9 +1044,8 @@ namespace Beams {
 		}
 
 		void printDeformed() {
-			size_t nodeSize = Nodes.size();
-			for (size_t i = 0; i < nodeSize; i++) {
-				const Node& node = Nodes.get(i);
+			for (auto& node : Nodes) {
+			
 				Vector3 a;
 				if (node.free_flag) {
 					a = Vector3Zero();

@@ -13,7 +13,7 @@ int main()
     model1.oneElementTest();
     model1.solve();
     
-    model1.printDeformed();
+    //model1.printDeformed();
     runViewer(model1);
 
 }
