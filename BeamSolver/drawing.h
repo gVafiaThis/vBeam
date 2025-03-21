@@ -486,7 +486,7 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
     }
     else {
         for (auto infoPos : infoNodes) {
-            const Beams::Node& node = nodes.get(infoPos);
+            const Beams::Node& node = nodes.get_byPos(infoPos);
             Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
             Vector3 deforms = model.getDeflectionRender(node.matrixPos);
             if (deformed) {
@@ -575,9 +575,9 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
             GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected.\nNodes also remove Elements.");
 
             if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
-                //std::sort(selectedNodes.rbegin(), selectedNodes.rend());
+                std::sort(selectedNodes.rbegin(), selectedNodes.rend());
                 for (size_t selected : selectedNodes) {
-                    model.removeNode_RenderOrder(selected);
+                    model.removeNode(selected);
                 }
                 selectedNodes.clear();
             };
@@ -628,7 +628,7 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
         GuiLabel(Rectangle{ 576, 40, 250, 40 }, "Pick 3 nodes and the corresponding section.\n Section properties can be managed in \"Sections\" from the dropdown");
         if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD ELEMENT") && selectedNodes.size() == 3) {
             //NodeAddActive = false;
-            model.addElement(nodes.get(selectedNodes[0]).pos, nodes.get(selectedNodes[1]).pos, nodes.get(selectedNodes[2]).pos, static_cast<size_t>(sectionId));
+            model.addElement(selectedNodes[0], selectedNodes[1], selectedNodes[2], static_cast<size_t>(sectionId));
             selectedNodes.clear();
         }
 
@@ -665,7 +665,6 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
             if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "Select")) {
                 for (size_t selected : selectedElems) {
                     infoElems.push_back(selected);
-                    //model.removeNode(selected);
                 }
                 selectedElems.clear();
                 ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
@@ -763,9 +762,9 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
                 xNew = (xNeg) ? -xNew : xNew;
                 yNew = (yNeg) ? -yNew : yNew;
                 zNew = (zNeg) ? -zNew : zNew;
-                model.addForce(nodes.get(nodePos).pos, 0, xNew);
-                model.addForce(nodes.get(nodePos).pos, 1, yNew);
-                model.addForce(nodes.get(nodePos).pos, 2, zNew);
+                model.addForce(nodePos, 0, xNew);
+                model.addForce(nodePos, 1, yNew);
+                model.addForce(nodePos, 2, zNew);
 
             }
         }
@@ -798,7 +797,7 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
     if (GuiFlags::SHOW_FORCE_INFO & ActionFlags) {
         {
             for (auto& force : model.getForces()) {
-                const Beams::Node& node = nodes.get(force.first);
+                const Beams::Node& node = nodes.get_byPos(force.first);
                 Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
 
                 if (deformed) {
@@ -823,7 +822,7 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
         GuiLabel(Rectangle{ 580, 40, 350, 56 }, "Pick Nodes with left click, unpick with right click\nADD BC adds the BC to selcted Nodes\nCLEAR clears selected Nodes");
         if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD BC") && selectedNodes.size() > 0) {
             for (auto nodePos : selectedNodes) {
-                model.addBCfixed(nodes.get(nodePos).pos);
+                model.addBCfixed(nodePos);
                 selectedNodes.clear();
             }
         }
@@ -855,8 +854,8 @@ void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::
 
     if (GuiFlags::SHOW_BC_INFO & ActionFlags) {
         {
-            for (auto& force : model.getBCfixed()) {
-                const Beams::Node& node = nodes.get(force);
+            for (auto& bc : model.getBCfixed()) {
+                const Beams::Node& node = nodes.get_byPos(bc);
                 Vector3 nodeCoords{ node.xRender,node.yRender,node.zRender };
 
                 if (deformed) {
@@ -916,7 +915,7 @@ bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::ve
 
             collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
             if (collision.hit) {
-                selectedNodes.push_back(i);
+                selectedNodes.push_back(node.pos);
                 return true;
             }
         }
@@ -934,7 +933,7 @@ bool PickNode(const Camera3D& camera, const Beams::NodeContainer& nodes, std::ve
 
             collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
             if (collision.hit) {
-                auto it = std::find(selectedNodes.begin(), selectedNodes.end(), i);
+                auto it = std::find(selectedNodes.begin(), selectedNodes.end(), node.pos);
                 if (it != selectedNodes.end()) selectedNodes.erase(it);
                 return true;
             }
@@ -1032,7 +1031,7 @@ void RenderNodes(bool deformed,Beams::Model model,std::vector<size_t>& selected)
     }
 
     for (size_t pos : selected) {
-        const Beams::Node& node = nodes.get(pos);
+        const Beams::Node& node = nodes.get_byPos(pos);
         Vector3 nodeCoords{ node.xRender ,node.yRender ,node.zRender };
         if (deformed) {
             nodeCoords += model.getDeflectionRender(node.matrixPos);

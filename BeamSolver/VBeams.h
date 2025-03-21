@@ -611,9 +611,9 @@ namespace Beams {
 		}
 
 		//remove node from nth position 
-		void removeNode_RenderOrder(size_t renderedpos) {
-			const Node& node =  Nodes.get(renderedpos);
-			size_t pos = node.pos;
+		void removeNode(size_t pos) {
+			const Node& node =  Nodes.get_byPos(pos);
+
 			size_t elPos = 0;
 			std::set<size_t> toRemove;//Remove from end to beginning. 
 			for (auto& element : Elements) {//iterate elements only once. TODO: change with removeElementId when you do binary search
