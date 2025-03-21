@@ -5,7 +5,7 @@ VisualStudioVersion = 17.11.35312.102
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BeamSolver", "BeamSolver\BeamSolver.vcxproj", "{5E1F67EA-AEBC-4562-A2A1-FEEF60C77352}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Raylib_", "Raylib_\Raylib_.vcxproj", "{C7951E23-81BE-4DCB-89ED-94774C17066F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Raylib_Project", "external\Raylib_VSProject\Raylib_.vcxproj", "{C7951E23-81BE-4DCB-89ED-94774C17066F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

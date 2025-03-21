@@ -110,7 +110,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\external\raylib-master\src;..\external\raylib-master\src\external;$(SolutionDir)\eigen-3.4.0;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\external\raylib-master\src;..\external\raylib-master\src\external;$(SolutionDir)external\eigen-3.4.0;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -141,13 +141,11 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="CubeExampleRaygui.h" />
     <ClInclude Include="drawing.h" />
-    <ClInclude Include="PointOctree.h" />
     <ClInclude Include="VBeams.h" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Raylib_\Raylib_.vcxproj">
+    <ProjectReference Include="..\external\Raylib_VSProject\Raylib_.vcxproj">
       <Project>{c7951e23-81be-4dcb-89ed-94774c17066f}</Project>
     </ProjectReference>
   </ItemGroup>
