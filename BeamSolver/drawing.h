@@ -392,21 +392,30 @@ namespace Rendering{
 
     void getGuiActionsInput(int& nodeSectionEl, uint32_t& ActionFlags, Beams::Model& model, std::vector<size_t>& infoNodes, std::vector<size_t>& selectedNodes, std::vector<size_t>& infoElems, std::vector<size_t>& selectedElems)
     {
-        GuiLabel(Rectangle{ 12, 10, 140, 24 }, "Control:");
-        if (GuiDropdownBox(Rectangle{ 12, 8 + 24, 140, 28 }, "NODES;ELEMENTS;SECTIONS;FORCES;BCs", &nodeSectionEl, ActionFlags & GuiFlags::DROPDOWN_EDIT)) ActionFlags ^= GuiFlags::DROPDOWN_EDIT;
-        if (GuiButton(Rectangle{ 12, 700, 140, 28 }, "Solve!")) {
+        int height = GetScreenHeight();
+        int width = GetScreenWidth();
+        static const Rectangle dropdownPos{ 12, 8 + 24, 140, 28 };
+        static const Rectangle but1{ 160, 8 + 24, 50, 28 };
+        static const Rectangle but2{ 218, 8 + 24, 50, 28 };
+        static const Rectangle but3{ 276, 8 + 24, 50, 28 };
+        static const Rectangle labelPos{ 12, 10, 140, 24 };
+        Rectangle solvePos{ 12, height-40, 140, 28 };
+
+        GuiLabel(labelPos, "Control:");
+        if (GuiDropdownBox(dropdownPos, "NODES;ELEMENTS;SECTIONS;FORCES;BCs", &nodeSectionEl, ActionFlags & GuiFlags::DROPDOWN_EDIT)) ActionFlags ^= GuiFlags::DROPDOWN_EDIT;
+        if (GuiButton(solvePos, "Solve!")) {
             model.solve();
         }
         if (nodeSectionEl == 0) {
-            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+            if (GuiButton(but1, "ADD")) {
                 ActionFlags = GuiFlags::NODE_ADD_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+            if (GuiButton(but2, "REMOVE")) {
                 ActionFlags = GuiFlags::NODE_REMOVE_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+            if (GuiButton(but3, "INFO")) {
                 ActionFlags = GuiFlags::SHOW_NODE_INFO;
                 for (auto infoPos : infoNodes) {
                     selectedNodes.push_back(infoPos);
@@ -415,15 +424,15 @@ namespace Rendering{
 
         }
         else if (nodeSectionEl == 1) {
-            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+            if (GuiButton(but1, "ADD")) {
                 ActionFlags = GuiFlags::EL_ADD_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+            if (GuiButton(but2, "REMOVE")) {
                 ActionFlags = GuiFlags::EL_REMOVE_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+            if (GuiButton(but3, "INFO")) {
                 ActionFlags = GuiFlags::SHOW_ELEM_INFO;
                 for (auto infoPos : infoElems) {
                     selectedElems.push_back(infoPos);
@@ -431,35 +440,35 @@ namespace Rendering{
             }
         }
         else if (nodeSectionEl == 2) {
-            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "MANAGE")) {
+            if (GuiButton(but1, "MANAGE")) {
                 ActionFlags = GuiFlags::SECTION_WINDOW;
             }
 
         }
 
         else if (nodeSectionEl == 3) {
-            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+            if (GuiButton(but1, "ADD")) {
                 ActionFlags = GuiFlags::FORCE_ADD_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+            if (GuiButton(but2, "REMOVE")) {
                 ActionFlags = GuiFlags::FORCE_REMOVE_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+            if (GuiButton(but3, "INFO")) {
                 ActionFlags = GuiFlags::SHOW_FORCE_INFO;
             }
         }
         else if (nodeSectionEl == 4) {
-            if (GuiButton(Rectangle{ 12 + 140 + 12, 8 + 24, 50, 28 }, "ADD")) {
+            if (GuiButton(but1, "ADD")) {
                 ActionFlags = GuiFlags::BC_ADD_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62, 8 + 24, 50, 28 }, "REMOVE")) {
+            if (GuiButton(but2, "REMOVE")) {
                 ActionFlags = GuiFlags::BC_REMOVE_ACTIVE;
             }
 
-            if (GuiButton(Rectangle{ 24 + 140 + 62 + 62, 8 + 24, 50, 28 }, "INFO")) {
+            if (GuiButton(but3, "INFO")) {
                 ActionFlags = GuiFlags::SHOW_BC_INFO;
             }
         }
@@ -469,6 +478,37 @@ namespace Rendering{
 
     void drawGuiActions(uint32_t& ActionFlags, const size_t& nodeSize, const Beams::NodeContainer& nodes, bool& deformed, Beams::Model& model, const Camera3D& camera, std::vector<size_t>& infoNodes, const std::vector<Beams::vBeam>& elements, std::vector<size_t>& infoElems, std::vector<size_t>& selectedNodes, std::vector<size_t>& selectedElems)
     {
+        //const int screenWidth = 1280;
+        //const int screenHeight = 800;
+        int height = GetScreenHeight();
+        int width = GetScreenWidth();
+
+        Rectangle windowPos{ 424.0f/1280.0f*width, 8.0f/800.0f*height, 448.0f/1280.0f*width, 136.0f/800.0f*height };
+
+        Rectangle OkButPos{ 736.0f/1280.0f*width, 112.0f/800.0f*height, 120.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle clearButPos{ 440.0f/1280.0f*width, 112.0f/800.0f*height, 120.0f/1280.0f*width, 24.0f/800.0f*height };
+
+        Rectangle xInputPos{ 444.0f/1280.0f*width, 43.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle yInputPos{ 444.0f/1280.0f*width, 75.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle zInputPos{ 444.0f/1280.0f*width, 107.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle xNegPos{ 506.0f/1280.0f*width, 43.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle yNegPos{ 506.0f/1280.0f*width, 75.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle zNegPos{ 506.0f/1280.0f*width, 107.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle textIndentedPos{ 560.0f/1280.0f*width, 43.0f/800.0f*height, 350.0f/1280.0f*width, 56.0f/800.0f*height };
+        Rectangle clearButIndentedPos{ 560.0f / 1280.0f * width, 112.0f / 800.0f * height, 120.0f / 1280.0f * width, 24.0f / 800.0f * height };
+
+        Rectangle textPos{ 436.0f/1280.0f*width, 40.0f/800.0f*height, 400.0f/1280.0f*width, 56.0f/800.0f*height };
+        Rectangle listPos{ 432.0f/1280.0f*width, 40.0f/800.0f*height, 120.0f/1280.0f*width, 96.0f/800.0f*height };
+
+        Rectangle secArea_InputPos{ 580.0f/1280.0f*width, 40.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle secIyy_InputPos{ 580.0f/1280.0f*width, 76.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle secE_InputPos{ 580.0f/1280.0f*width, 112.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle secIxx_InputPos{ 656.0f/1280.0f*width, 40.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle secIzz_InputPos{ 656.0f/1280.0f*width, 76.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle secG_InputPos{ 656.0f/1280.0f*width, 112.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle sec_SaveButPos{ 736.0f / 1280.0f * width, 76.0f / 800.0f * height, 120.0f / 1280.0f * width, 24.0f / 800.0f * height };
+
+
         if (GuiFlags::SHOW_NODE_INFO & ActionFlags) {
             for (auto& notDeleted : nodes) {
                 const Beams::Node& node = notDeleted;
@@ -551,15 +591,15 @@ namespace Rendering{
             static bool zNeg = false;
             static bool spin = false;
 
-            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "AddNode")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
-            if (GuiValueBox(Rectangle{ 444, 56 - 13, 56, 24 }, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
-            if (GuiValueBox(Rectangle{ 444, 88 - 13, 56, 24 }, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
-            if (GuiValueBox(Rectangle{ 444, 120 - 13, 56, 24 }, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
-            GuiCheckBox(Rectangle{ 516, 56 - 13, 24, 24 }, "Neg", &xNeg);
-            GuiCheckBox(Rectangle{ 516, 88 - 13, 24, 24 }, "Neg", &yNeg);
-            GuiCheckBox(Rectangle{ 516, 120 - 13, 24, 24 }, "Neg", &zNeg);
+            if (GuiWindowBox(windowPos, "AddNode")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
+            if (GuiValueBox(xInputPos, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
+            if (GuiValueBox(yInputPos, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
+            if (GuiValueBox(zInputPos, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
+            GuiCheckBox(xNegPos, "Neg", &xNeg);
+            GuiCheckBox(yNegPos, "Neg", &yNeg);
+            GuiCheckBox(zNegPos, "Neg", &zNeg);
 
-            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD NODE!")) {
+            if (GuiButton(OkButPos, "ADD NODE!")) {
                 //NodeAddActive = false;
                 xNew = (xNeg) ? -xNew : xNew;
                 yNew = (yNeg) ? -yNew : yNew;
@@ -572,10 +612,10 @@ namespace Rendering{
             {
 
                 static bool toggleActive = false;
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveNode")) ActionFlags &= ~GuiFlags::NODE_REMOVE_ACTIVE;
-                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected.\nNodes also remove Elements.");
+                if (GuiWindowBox(windowPos, "RemoveNode")) ActionFlags &= ~GuiFlags::NODE_REMOVE_ACTIVE;
+                GuiLabel(textPos, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected.\nNodes also remove Elements.");
 
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                if (GuiButton(OkButPos, "REMOVE")) {
                     std::sort(selectedNodes.rbegin(), selectedNodes.rend());
                     for (size_t selected : selectedNodes) {
                         model.removeNode(selected);
@@ -583,7 +623,7 @@ namespace Rendering{
                     selectedNodes.clear();
                 };
 
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
                 }
             }
@@ -591,16 +631,16 @@ namespace Rendering{
 
         if (GuiFlags::SHOW_NODE_INFO & ActionFlags) {
             {
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Node Information")) ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
-                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick SELECT to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "SELECT")) {
+                if (GuiWindowBox(windowPos, "Node Information")) ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
+                GuiLabel(textPos, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick SELECT to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
+                if (GuiButton(OkButPos, "SELECT")) {
                     for (size_t selected : selectedNodes) {
                         infoNodes.push_back(selected);
                     }
                     selectedNodes.clear();
                     ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
                 };
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
                     infoNodes.clear();
                 }
@@ -623,11 +663,11 @@ namespace Rendering{
             if (listNames.size() > 0) listNames.erase(listNames.size() - 1);
 
 
-            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Create Element")) ActionFlags &= ~GuiFlags::EL_ADD_ACTIVE;
-            GuiListView(Rectangle{ 432, 40, 120, 96 }, listNames.data(), &ListViewTop, &sectionId);
+            if (GuiWindowBox(windowPos, "Create Element")) ActionFlags &= ~GuiFlags::EL_ADD_ACTIVE;
+            GuiListView(listPos, listNames.data(), &ListViewTop, &sectionId);
             //std::string info = "Pick 3 nodes and the corresponding section.";
-            GuiLabel(Rectangle{ 576, 40, 250, 40 }, "Pick 3 nodes and the corresponding section.\n Section properties can be managed in \"Sections\" from the dropdown");
-            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD ELEMENT") && selectedNodes.size() == 3) {
+            GuiLabel(textIndentedPos, "Pick 3 nodes and the corresponding section.\nManage Section Properties in \"Sections\" from the dropdown\n\n");
+            if (GuiButton(OkButPos, "ADD ELEMENT") && selectedNodes.size() == 3) {
                 //NodeAddActive = false;
                 model.addElement(selectedNodes[0], selectedNodes[1], selectedNodes[2], static_cast<size_t>(sectionId));
                 selectedNodes.clear();
@@ -642,9 +682,9 @@ namespace Rendering{
 
         if (GuiFlags::EL_REMOVE_ACTIVE & ActionFlags) {
             {
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "RemoveElement")) ActionFlags &= ~GuiFlags::EL_REMOVE_ACTIVE;
-                GuiLabel(Rectangle{ 436, 40 , 400, 40 }, "Pick elements with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick Remove to remove selected.");
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                if (GuiWindowBox(windowPos, "RemoveElement")) ActionFlags &= ~GuiFlags::EL_REMOVE_ACTIVE;
+                GuiLabel(textPos, "Pick elements with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick Remove to remove selected.\n");
+                if (GuiButton(OkButPos, "REMOVE")) {
                     std::sort(selectedElems.rbegin(), selectedElems.rend());//reverse sort
                     for (size_t selected : selectedElems) {
                         model.removeElement(selected);
@@ -652,18 +692,18 @@ namespace Rendering{
                     selectedElems.clear();
 
                 };
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedElems.clear();
                 }
-                //GuiToggle(Rectangle{ 440, 112, 120, 24 }, "TOGGLE PICK", &pickElemsActive);
+                //GuiToggle(clearButPos, "TOGGLE PICK", &pickElemsActive);
             }
         }
 
         if (GuiFlags::SHOW_ELEM_INFO & ActionFlags) {
             {
 
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Element Information")) ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "Select")) {
+                if (GuiWindowBox(windowPos, "Element Information")) ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
+                if (GuiButton(OkButPos, "Select")) {
                     for (size_t selected : selectedElems) {
                         infoElems.push_back(selected);
                     }
@@ -671,7 +711,7 @@ namespace Rendering{
                     ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
 
                 };
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "Clear")) {
+                if (GuiButton(clearButPos, "Clear")) {
                     selectedElems.clear();
                     infoElems.clear();
                 }
@@ -720,21 +760,21 @@ namespace Rendering{
             if (listNames.size() > 0) listNames.erase(listNames.size() - 1);
 
 
-            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Sections")) ActionFlags &= ~GuiFlags::SECTION_WINDOW;
-            GuiListView(Rectangle{ 432, 40, 120, 96 }, listNames.data(), &ListViewTop, &sectionId);
-            if (GuiValueBox(Rectangle{ 576, 40, 56, 24 }, "Area", &A, 0, 1000000, A_Active)) A_Active = !A_Active;
-            if (GuiValueBox(Rectangle{ 576, 76, 56, 24 }, "Iyy", &Iyy, 0, 1000000, Iyy_Active)) Iyy_Active = !Iyy_Active;
-            if (GuiValueBox(Rectangle{ 576, 112, 56, 24 }, "E", &E, 0, 1000000, E_Active)) E_Active = !E_Active;
-            if (GuiValueBox(Rectangle{ 656, 40, 56, 24 }, "Ixx", &Ixx, 0, 1000000, Ixx_Active)) Ixx_Active = !Ixx_Active;
-            if (GuiValueBox(Rectangle{ 656, 76, 56, 24 }, "Izz", &Izz, 0, 1000000, Izz_Active)) Izz_Active = !Izz_Active;
-            if (GuiValueBox(Rectangle{ 656, 112, 56, 24 }, "G", &G, 0, 1000000, G_Active)) G_Active = !G_Active;
-            if (GuiButton(Rectangle{ 728, 76, 64, 24 }, "ADD")) {
+            if (GuiWindowBox(windowPos, "Sections")) ActionFlags &= ~GuiFlags::SECTION_WINDOW;
+            GuiListView(listPos, listNames.data(), &ListViewTop, &sectionId);
+            if (GuiValueBox(secArea_InputPos, "Area", &A, 0, 1000000, A_Active)) A_Active = !A_Active;
+            if (GuiValueBox(secIyy_InputPos, "Iyy", &Iyy, 0, 1000000, Iyy_Active)) Iyy_Active = !Iyy_Active;
+            if (GuiValueBox(secE_InputPos, "E", &E, 0, 1000000, E_Active)) E_Active = !E_Active;
+            if (GuiValueBox(secIxx_InputPos, "Ixx", &Ixx, 0, 1000000, Ixx_Active)) Ixx_Active = !Ixx_Active;
+            if (GuiValueBox(secIzz_InputPos, "Izz", &Izz, 0, 1000000, Izz_Active)) Izz_Active = !Izz_Active;
+            if (GuiValueBox(secG_InputPos, "G", &G, 0, 1000000, G_Active)) G_Active = !G_Active;
+            if (GuiButton(OkButPos, "ADD")) {
                 model.addSection(A, E, G, Ixx, Iyy, Izz);
 
             }
-            /*if (GuiButton(Rectangle{ 728, 112, 64, 24 }, "SAVE") && sections.size() > 0) {
+            if (GuiButton(sec_SaveButPos, "SAVE") && sections.size() > 0) {
                 model.modifySection(sectionId, A, E, G, Ixx, Iyy, Izz);
-            }*/
+            }
 
 
         }
@@ -750,15 +790,15 @@ namespace Rendering{
             static bool zNeg = false;
             deformed = false;
 
-            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Add Force")) ActionFlags &= ~GuiFlags::FORCE_ADD_ACTIVE;
-            if (GuiValueBox(Rectangle{ 444, 56 - 13, 56, 24 }, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
-            if (GuiValueBox(Rectangle{ 444, 88 - 13, 56, 24 }, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
-            if (GuiValueBox(Rectangle{ 444, 120 - 13, 56, 24 }, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
-            GuiCheckBox(Rectangle{ 516, 56 - 13, 24, 24 }, "Neg", &xNeg);
-            GuiCheckBox(Rectangle{ 516, 88 - 13, 24, 24 }, "Neg", &yNeg);
-            GuiCheckBox(Rectangle{ 516, 120 - 13, 24, 24 }, "Neg", &zNeg);
-            GuiLabel(Rectangle{ 580, 40, 350, 56 }, "Pick Nodes and insert Force vector coordinates\nToggle NEG for Negative Values\nADD FORCE adds the force to slected Nodes\nCLEAR clears selected Nodes");
-            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD FORCE") && selectedNodes.size() > 0) {
+            if (GuiWindowBox(windowPos, "Add Force")) ActionFlags &= ~GuiFlags::FORCE_ADD_ACTIVE;
+            if (GuiValueBox(xInputPos, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
+            if (GuiValueBox(yInputPos, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
+            if (GuiValueBox(zInputPos, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
+            GuiCheckBox(xNegPos, "Neg", &xNeg);
+            GuiCheckBox(yNegPos, "Neg", &yNeg);
+            GuiCheckBox(zNegPos, "Neg", &zNeg);
+            GuiLabel(textIndentedPos, "Pick Nodes and insert Force vector coordinates\nToggle NEG for Negative Values\nADD FORCE adds the force to slected Nodes\nCLEAR clears selected Nodes");
+            if (GuiButton(OkButPos, "ADD FORCE") && selectedNodes.size() > 0) {
                 for (auto nodePos : selectedNodes) {
                     xNew = (xNeg) ? -xNew : xNew;
                     yNew = (yNeg) ? -yNew : yNew;
@@ -769,7 +809,7 @@ namespace Rendering{
 
                 }
             }
-            if (GuiButton(Rectangle{ 580, 112, 120, 24 }, "CLEAR")) {
+            if (GuiButton(clearButIndentedPos, "CLEAR")) {
                 selectedNodes.clear();
             }
 
@@ -779,17 +819,17 @@ namespace Rendering{
             {
 
                 static bool toggleActive = false;
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Remove Force")) ActionFlags &= ~GuiFlags::FORCE_REMOVE_ACTIVE;
-                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
+                if (GuiWindowBox(windowPos, "Remove Force")) ActionFlags &= ~GuiFlags::FORCE_REMOVE_ACTIVE;
+                GuiLabel(textPos, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
 
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                if (GuiButton(OkButPos, "REMOVE")) {
                     for (size_t selected : selectedNodes) {
                         model.removeForce(selected);
                     }
                     selectedNodes.clear();
                 };
 
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
                 }
             }
@@ -818,16 +858,16 @@ namespace Rendering{
         if (GuiFlags::BC_ADD_ACTIVE & ActionFlags)
         {
 
-            if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Add Force")) ActionFlags &= ~GuiFlags::BC_ADD_ACTIVE;
+            if (GuiWindowBox(windowPos, "Add Force")) ActionFlags &= ~GuiFlags::BC_ADD_ACTIVE;
 
-            GuiLabel(Rectangle{ 580, 40, 350, 56 }, "Pick Nodes with left click, unpick with right click\nADD BC adds the BC to selcted Nodes\nCLEAR clears selected Nodes");
-            if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "ADD BC") && selectedNodes.size() > 0) {
+            GuiLabel(textPos, "Pick Nodes with left click, unpick with right click\nADD BC adds the BC to selcted Nodes\nCLEAR clears selected Nodes\n");
+            if (GuiButton(OkButPos, "ADD BC") && selectedNodes.size() > 0) {
                 for (auto nodePos : selectedNodes) {
                     model.addBCfixed(nodePos);
                     selectedNodes.clear();
                 }
             }
-            if (GuiButton(Rectangle{ 580, 112, 120, 24 }, "CLEAR")) {
+            if (GuiButton(clearButPos, "CLEAR")) {
                 selectedNodes.clear();
             }
 
@@ -837,17 +877,17 @@ namespace Rendering{
             {
 
                 static bool toggleActive = false;
-                if (GuiWindowBox(Rectangle{ 424, 8, 448, 136 }, "Remove Force")) ActionFlags &= ~GuiFlags::BC_REMOVE_ACTIVE;
-                GuiLabel(Rectangle{ 436, 40 , 400, 56 }, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
+                if (GuiWindowBox(windowPos, "Remove Force")) ActionFlags &= ~GuiFlags::BC_REMOVE_ACTIVE;
+                GuiLabel(textPos, "Pick nodes with left click. Unpick with right click.\nClick CLEAR to clear selection.\nClick REMOVE to remove selected Forces.\n ");
 
-                if (GuiButton(Rectangle{ 736, 112, 120, 24 }, "REMOVE")) {
+                if (GuiButton(OkButPos, "REMOVE")) {
                     for (size_t selected : selectedNodes) {
                         model.removeBCfixed(selected);
                     }
                     selectedNodes.clear();
                 };
 
-                if (GuiButton(Rectangle{ 440, 112, 120, 24 }, "CLEAR")) {
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
                 }
             }
@@ -1073,11 +1113,12 @@ namespace Rendering{
 
         // Tell the window to use vsync and work on high DPI displays
         //SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-        SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 
 
         // Create the window and OpenGL context
         InitWindow(screenWidth, screenHeight, "VBeams");
+        SetWindowMinSize(1000, 692);
     }
 
     void CameraControls(Vector3& rotCenter, Camera3D& camera, const BoundingBox& objectsBoundBox)

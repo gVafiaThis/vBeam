@@ -1090,6 +1090,15 @@ namespace Beams {
 				sec.Iyy = (_Iyy < 0) ? _Izz : _Iyy;
 				sec.Modulus = _Modulus;
 				sec.G = _G;
+
+				sec.EIz12 = 12 * _Modulus * _Izz;
+				sec.EIy12 = 12 * _Modulus * _Iyy;
+				sec.EIz6 = 6 * _Modulus * _Izz;
+				sec.EIy6 = 6 * _Modulus * _Iyy;
+				sec.EIz4 = 4 * _Modulus * _Izz;
+				sec.EIy4 = 4 * _Modulus * _Iyy;
+				sec.EIz2 = 2 * _Modulus * _Izz;
+				sec.EIy2 = 2 * _Modulus * _Iyy;
 				for (auto& element : Elements) {
 					if (std::find(sec.inElements.begin(), sec.inElements.end(), element.getID()) != sec.inElements.end()) {
 						element.reCalc(Nodes, sec);
