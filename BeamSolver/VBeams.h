@@ -20,7 +20,7 @@
 #define ERR_TOLERANCE 0.000000001
 #define RENDER_SCALING_FACTOR 0.1
 
-//#define DEBUG_PRINTS
+#define DEBUG_PRINTS
 
 
 
@@ -581,7 +581,6 @@ namespace Beams {
 
 	class Model {
 		std::vector<Eigen::Triplet<float>> globalK_triplets;
-		std::vector<Eigen::Triplet<float>> globalF_triplets;
 
 		Eigen::SparseVector<float> U, F;
 
@@ -802,7 +801,6 @@ namespace Beams {
 			//TODO: Check for unconstrained model
 			
 			globalK_triplets.clear();
-			globalF_triplets.clear();
 			if (BCfixed.size() + BCpinned.size() < 1) {
 				solved = false;
 				return;
@@ -825,13 +823,12 @@ namespace Beams {
 			for (auto& element : Elements) {
 				element.LocalMatrix2GlobalTriplets(globalK_triplets, Nodes, Sections[element.getSectionId()]);
 
-			#ifdef DEBUG_PRINTS
-				testGlobAll.setFromTriplets(globalK_triplets.begin(), globalK_triplets.end());
-			#endif // DEBUG_PRINTS
+			
 
 			}
 
 			#ifdef DEBUG_PRINTS
+				testGlobAll.setFromTriplets(globalK_triplets.begin(), globalK_triplets.end());
 				std::cout << "\n------------------------------------\n Glob Matrix noRowDeletion:\n " << Eigen::MatrixXf(testGlobAll) << "\n";
 			#endif // DEBUG_PRINTS
 
@@ -906,17 +903,18 @@ namespace Beams {
 			for (auto& force : Forces) {
 				size_t forceMatrixPos = Nodes.get_byPos(force.first).matrixPos*6;
 				bool inBC = false;
-
+				size_t minusPos = 0;
 				for (size_t BCid : BCfixed) {
-					size_t BCstart = Nodes.get_byPos(BCid).matrixPos;
-					size_t BCend = Nodes.get_byPos(BCid).matrixPos + 5;
-					if (forceMatrixPos > BCend) forceMatrixPos -= 6;
+					size_t BCstart = Nodes.get_byPos(BCid).matrixPos*6;
+					size_t BCend = Nodes.get_byPos(BCid).matrixPos*6 + 5;
+					if (forceMatrixPos > BCend) minusPos += 6;
 					else if (forceMatrixPos >= BCstart) {
 						inBC = true;
 						break;
 					}
 
 				}
+				forceMatrixPos -= minusPos;
 				if (inBC || forceMatrixPos >= F.rows()) continue;
 
 				F.insert((Eigen::Index)forceMatrixPos) = force.second[0];
@@ -938,6 +936,9 @@ namespace Beams {
 			//----------------------------------------------------------------------------------------------------
 			//TODO: Proper handling of failed solves.
 
+
+
+
 			Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
 			solver.compute(globMatr);
 
@@ -954,7 +955,11 @@ namespace Beams {
 				solved = true;
 				std::cout << U;
 				Urender = U * 0.1 * scaleFactor;
+#ifdef DEBUG_PRINTS
+				//std::cout << "\n--------------------------------\nForce Vector\n" << Eigen::VectorXf(F) << "\n";
+				//std::cout << "\n--------------------------------\Deflection Vector\n" << Eigen::VectorXf(U) << "\n";
 
+#endif // DEBUG_PRINTS
 				return;
 			}
 
@@ -1110,7 +1115,6 @@ namespace Beams {
 	
 		void clear() {
 			globalK_triplets.clear();
-			globalF_triplets.clear();
 			U.data().clear();
 			F.data().clear();
 
