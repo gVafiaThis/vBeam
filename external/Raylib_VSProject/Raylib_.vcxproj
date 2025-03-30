@@ -472,6 +472,7 @@
     <ClInclude Include="..\raylib-master\src\rgestures.h" />
     <ClInclude Include="..\raylib-master\src\rlgl.h" />
     <ClInclude Include="..\raylib-master\src\utils.h" />
+    <ClInclude Include="..\raylib_assets\MODIFIED_gui_window_file_dialog.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\raylib-master\src\raudio.c" />

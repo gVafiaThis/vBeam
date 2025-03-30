@@ -7,6 +7,9 @@
     <Filter Include="Header Files">
       <UniqueIdentifier>{21EB8090-0D4E-1035-B6D3-48EBA215DCB7}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Assets">
+      <UniqueIdentifier>{f4495462-d9ac-475a-8c8a-b15c28984294}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\raylib-master\src\config.h">
@@ -32,6 +35,9 @@
     </ClInclude>
     <ClInclude Include="..\raylib-master\src\utils.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\raylib_assets\MODIFIED_gui_window_file_dialog.h">
+      <Filter>Assets</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

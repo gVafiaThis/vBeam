@@ -165,6 +165,11 @@ namespace Beams {
 			return Nodes.size() - deleted.size();
 		}
 
+		void clear() {
+			Nodes.clear();
+			deleted.clear();
+		}
+
 		//Returns nth not deleted node. For iterations
 		const Node& get_notDeleted(size_t pos) const {
 			auto endIt = deleted.end();
@@ -183,32 +188,28 @@ namespace Beams {
 			return Nodes[pos];
 		}
 
-		void setFree_fromAll(size_t pos, bool free) {
+		void setFree_byPos(size_t pos, bool free) {
 			Nodes[pos].free_flag = free;
 			return;
 		}
 
-		bool getFree_fromAll(size_t pos) {
+		bool getFree_byPos(size_t pos) {
 			return Nodes[pos].free_flag;
 		}
 
-		void add_InElement_fromAll(size_t pos, Eigen::Index id) {
+		void add_InElement_byPos(size_t pos, Eigen::Index id) {
 			Node& node = Nodes[pos];
 			node.inElements.insert(id);
 			//free gets set from outside here. 
 		}
 
-		void remove_InElement_fromAll(size_t pos, Eigen::Index id) {
+		void remove_InElement_byPos(size_t pos, Eigen::Index id) {
 			Node& node = Nodes[pos];
 			node.inElements.erase(id);
 			node.free_flag = !node.inElements.size();
 		}
 
-		void setMatrixPos(size_t pos, Eigen::Index matPos) {
-			get_NotDeleted(pos).matrixPos = matPos;
-		}
-
-		void setMatrixPos_fromAll(size_t pos, Eigen::Index matPos) {
+		void setMatrixPos_byPos(size_t pos, Eigen::Index matPos) {
 			Nodes[pos].matrixPos = matPos;
 		}
 
@@ -468,7 +469,7 @@ namespace Beams {
 			calc_BMatrix(section);
 		}
 
-		const size_t getSectionId() {
+		const size_t getSectionId() const {
 			return sectionId;
 		}
 
@@ -656,8 +657,8 @@ namespace Beams {
 			Sections[sectionID].inElements.emplace_back(eId_Last);
 
 			//get whether the element's nodes were not used in the stifness matrix
-			bool n1Free = Nodes.getFree_fromAll(n1Pos);
-			bool n2Free = Nodes.getFree_fromAll(n2Pos);
+			bool n1Free = Nodes.getFree_byPos(n1Pos);
+			bool n2Free = Nodes.getFree_byPos(n2Pos);
 
 
 			//ADD DOFs to problem
@@ -665,20 +666,20 @@ namespace Beams {
 
 			//Set Node positions in the stifness matrix
 			if (n1Free) {//it goes in the back of the matrix order
-				Nodes.setMatrixPos_fromAll(n1Pos, nodes_InMatrixOrder.size());
+				Nodes.setMatrixPos_byPos(n1Pos, nodes_InMatrixOrder.size());
 				nodes_InMatrixOrder.push_back(n1Pos);
 			}
 			if (n2Free) {//it goes in the back of the matrix order
-				Nodes.setMatrixPos_fromAll(n2Pos, nodes_InMatrixOrder.size());
+				Nodes.setMatrixPos_byPos(n2Pos, nodes_InMatrixOrder.size());
 				nodes_InMatrixOrder.push_back(n2Pos);
 			}
 
 			//Update Nodes that are part of Element
-			Nodes.add_InElement_fromAll(n1Pos, eId_Last);
-			Nodes.add_InElement_fromAll(n2Pos, eId_Last);
-			Nodes.add_InElement_fromAll(n3Pos, eId_Last);
-			Nodes.setFree_fromAll(n1Pos, false);
-			Nodes.setFree_fromAll(n2Pos, false);
+			Nodes.add_InElement_byPos(n1Pos, eId_Last);
+			Nodes.add_InElement_byPos(n2Pos, eId_Last);
+			Nodes.add_InElement_byPos(n3Pos, eId_Last);
+			Nodes.setFree_byPos(n1Pos, false);
+			Nodes.setFree_byPos(n2Pos, false);
 
 			eId_Last++;
 			return true;
@@ -691,9 +692,9 @@ namespace Beams {
 				vBeam& el = Elements[counter];
 				if (el.getID() == eId) {
 
-					Nodes.remove_InElement_fromAll(el.node1Pos,eId);
-					Nodes.remove_InElement_fromAll(el.node2Pos,eId);
-					Nodes.remove_InElement_fromAll(el.node3Pos,eId);
+					Nodes.remove_InElement_byPos(el.node1Pos,eId);
+					Nodes.remove_InElement_byPos(el.node2Pos,eId);
+					Nodes.remove_InElement_byPos(el.node3Pos,eId);
 
 					
 					Elements.erase(Elements.begin() + counter); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
@@ -714,9 +715,9 @@ namespace Beams {
 			solved = false;
 
 			Eigen::Index eId = el.getID();
-			Nodes.remove_InElement_fromAll(el.node1Pos, eId);
-			Nodes.remove_InElement_fromAll(el.node2Pos, eId);
-			Nodes.remove_InElement_fromAll(el.node3Pos, eId);
+			Nodes.remove_InElement_byPos(el.node1Pos, eId);
+			Nodes.remove_InElement_byPos(el.node2Pos, eId);
+			Nodes.remove_InElement_byPos(el.node3Pos, eId);
 
 
 			//Housekeeping for node DOFs order. 
@@ -727,20 +728,20 @@ namespace Beams {
 			if (n1.free_flag) {//it became free now
 				for (size_t i = n1.matrixPos+1; i < nodes_InMatrixOrder.size(); i++) {
 					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_fromAll(nextNodePos,Nodes.get_byPos(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+					Nodes.setMatrixPos_byPos(nextNodePos,Nodes.get_byPos(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
 				}
 				noDofs -= 6;
 				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n1.matrixPos);
-				Nodes.setMatrixPos_fromAll(n1.pos, -1);
+				Nodes.setMatrixPos_byPos(n1.pos, -1);
 			}
 			if (n2.free_flag) {//it became free now
 				for (size_t i = n2.matrixPos + 1; i < nodes_InMatrixOrder.size(); i++) {
 					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_fromAll(nextNodePos, Nodes.get_byPos(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
+					Nodes.setMatrixPos_byPos(nextNodePos, Nodes.get_byPos(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
 				}
 				noDofs -= 6;
 				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n2.matrixPos);
-				Nodes.setMatrixPos_fromAll(n2.pos, -1);
+				Nodes.setMatrixPos_byPos(n2.pos, -1);
 
 			}
 
@@ -1027,7 +1028,7 @@ namespace Beams {
 
 		}
 
-		const std::map<size_t, std::array<float, 6>>& getForces() {
+		const std::map<size_t, std::array<float, 6>>& getForces() const  {
 			return Forces;
 		}
 
@@ -1106,7 +1107,35 @@ namespace Beams {
 				}
 			}
 		}
-	};
+	
+		void clear() {
+			globalK_triplets.clear();
+			globalF_triplets.clear();
+			U.data().clear();
+			F.data().clear();
+
+
+			Nodes.clear();
+
+			Sections.clear();
+			secIdNext = 0;
+
+			Elements.clear();
+			eId_Last = 0;
+
+			nodes_InMatrixOrder.clear();
+
+			BCpinned.clear();//UNUSED- and going to be unused.
+			BCfixed.clear();
+			Forces.clear();//node position to force. Position refers to All nodes, taking into account the deleted stuff.
+
+			noDofs = 0;
+
+			solved = false;
+			Urender.data().clear();
+			scaleFactor = 1; 
+		}
+};
 };
 
 
