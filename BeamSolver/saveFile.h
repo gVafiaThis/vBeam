@@ -72,14 +72,14 @@ namespace Saving {
 	}
 
 
-	static inline void saveForce(std::ofstream& out, std::array<float, 6> force, size_t nodeOrderPos) {
+	static inline void saveForce(std::ofstream& out, std::array<double, 6> force, size_t nodeOrderPos) {
 		saveVar(out, nodeOrderPos);
-		saveVar(out, force[0]);
-		saveVar(out, force[1]);
-		saveVar(out, force[2]);
-		saveVar(out, force[3]);
-		saveVar(out, force[4]);
-		saveVar(out, force[5]);
+		saveVar(out, (float)force[0]);
+		saveVar(out, (float)force[1]);
+		saveVar(out, (float)force[2]);
+		saveVar(out, (float)force[3]);
+		saveVar(out, (float)force[4]);
+		saveVar(out, (float)force[5]);
 	};
 
 	static inline void readForce(std::ifstream& in, Beams::Model& model) {

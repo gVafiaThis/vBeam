@@ -1030,9 +1030,9 @@ namespace Rendering{
             if (activeDropdownMenu == 1) {
                 Vector3 middlePosition = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
                 DrawSphere(middlePosition, 0.15f, BLUE);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[0].coeff(0), element.localVectors[0].coeff(1), element.localVectors[0].coeff(2) },middlePosition), RED);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[1].coeff(0), element.localVectors[1].coeff(1), element.localVectors[1].coeff(2) },middlePosition), GREEN);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[2].coeff(0), element.localVectors[2].coeff(1), element.localVectors[2].coeff(2) },middlePosition), BLUE);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[0].coeff(0), (float)element.localVectors[0].coeff(1), (float)element.localVectors[0].coeff(2) },middlePosition), RED);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[1].coeff(0), (float)element.localVectors[1].coeff(1), (float)element.localVectors[1].coeff(2) },middlePosition), GREEN);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[2].coeff(0), (float)element.localVectors[2].coeff(1), (float)element.localVectors[2].coeff(2) },middlePosition), BLUE);
                 
 
             }
