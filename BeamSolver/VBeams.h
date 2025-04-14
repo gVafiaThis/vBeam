@@ -1,5 +1,6 @@
 #pragma once
 #include <set>
+#include <iostream>
 #include <vector>
 #include <map>
 #include <array>
@@ -279,6 +280,7 @@ namespace Beams {
 
 		Eigen::SparseMatrix<float> localBmatrix;
 
+
 		float Len;
 		//make properties for common stifness matrices
 		size_t sectionId;
@@ -446,6 +448,8 @@ namespace Beams {
 
 
 	public:
+		Eigen::Vector3f localVectors[3];
+
 		size_t node1Pos, node2Pos, node3Pos;
 
 
@@ -480,14 +484,14 @@ namespace Beams {
 		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<float>>& globalTriplets, NodeContainer& Nodes, Section& section) {
 			//TODO: refactor stupid get_fromAll function calls. Put this in model
 			//using direction cosine matrix because reasons and it works also and no gimbal lock or whatever this stuff is 
-			static const Eigen::Vector3d xAxis(1, 0, 0);
-			static const Eigen::Vector3d yAxis(0, 1, 0);
-			static const Eigen::Vector3d zAxis(0, 0, 1);
+			static const Eigen::Vector3f xAxis(1, 0, 0);
+			static const Eigen::Vector3f yAxis(0, 1, 0);
+			static const Eigen::Vector3f zAxis(0, 0, 1);
 
 
-			Eigen::Vector3d localX_unit(Nodes.get_byPos(node2Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node2Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node2Pos).z - Nodes.get_byPos(node1Pos).z);
-			Eigen::Vector3d localY_unit(Nodes.get_byPos(node3Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node3Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node3Pos).z - Nodes.get_byPos(node1Pos).z);//a vector in XY local plane
-			Eigen::Vector3d localZ_unit;
+			Eigen::Vector3f localX_unit(Nodes.get_byPos(node2Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node2Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node2Pos).z - Nodes.get_byPos(node1Pos).z);
+			Eigen::Vector3f localY_unit(Nodes.get_byPos(node3Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node3Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node3Pos).z - Nodes.get_byPos(node1Pos).z);//a vector in XY local plane
+			Eigen::Vector3f localZ_unit;
 
 
 
@@ -500,28 +504,43 @@ namespace Beams {
 
 
 			std::vector<Eigen::Triplet<float>> dirCosineMat_triplets(37);
+			std::vector<Eigen::Triplet<float>> dirCosineMat_tripletsB(37);
+			std::vector<Eigen::Triplet<float>> dirCosineMat_tripletsC(37);
+
+
+			localVectors[0] = localX_unit;
+			localVectors[1] = localY_unit;
+			localVectors[2] = localZ_unit;
 
 
 			for (size_t i = 0; i < 12; i += 3) {
 				dirCosineMat_triplets.emplace_back(0 + i, 0 + i, localX_unit.adjoint() * xAxis);
-				dirCosineMat_triplets.emplace_back(0 + i, 1 + i, localX_unit.adjoint() * yAxis);
-				dirCosineMat_triplets.emplace_back(0 + i, 2 + i, localX_unit.adjoint() * zAxis);
+				dirCosineMat_triplets.emplace_back(0 + i, 1 + i, localY_unit.adjoint() * xAxis);
+				dirCosineMat_triplets.emplace_back(0 + i, 2 + i, localZ_unit.adjoint() * xAxis);
 
-				dirCosineMat_triplets.emplace_back(1 + i, 0 + i, localY_unit.adjoint() * xAxis);
+				dirCosineMat_triplets.emplace_back(1 + i, 0 + i, localX_unit.adjoint() * yAxis);
 				dirCosineMat_triplets.emplace_back(1 + i, 1 + i, localY_unit.adjoint() * yAxis);
-				dirCosineMat_triplets.emplace_back(1 + i, 2 + i, localY_unit.adjoint() * zAxis);
+				dirCosineMat_triplets.emplace_back(1 + i, 2 + i, localZ_unit.adjoint() * yAxis);
 
-				dirCosineMat_triplets.emplace_back(2 + i, 0 + i, localZ_unit.adjoint() * xAxis);
-				dirCosineMat_triplets.emplace_back(2 + i, 1 + i, localZ_unit.adjoint() * yAxis);
+				dirCosineMat_triplets.emplace_back(2 + i, 0 + i, localX_unit.adjoint() * zAxis);
+				dirCosineMat_triplets.emplace_back(2 + i, 1 + i, localY_unit.adjoint() * zAxis);
 				dirCosineMat_triplets.emplace_back(2 + i, 2 + i, localZ_unit.adjoint() * zAxis);
 			}
 
 
 			Eigen::SparseMatrix<float> cosMatrix(12, 12);
+
+
 			cosMatrix.setFromTriplets(dirCosineMat_triplets.begin(), dirCosineMat_triplets.end());
 
-			Eigen::SparseMatrix<float> globalB = cosMatrix * localBmatrix * (cosMatrix.transpose());
+
+			Eigen::SparseMatrix<float> globalB = cosMatrix * localBmatrix * cosMatrix.transpose();
 			//std::cout << Eigen::MatrixXf(globalB);
+#ifdef DEBUG_PRINTS
+
+			std::cout << "\n\nCOS MATRIX FOR ELEMENT"<< id<<"__________\n"<<Eigen::MatrixXf(cosMatrix)<<"\n\n";
+			std::cout << "\n\n" << globalB.coeff(1, 1)<<'\n';
+#endif // DEBUG_PRINTS
 
 			Eigen::Index nid1 = Nodes.get_byPos(node1Pos).matrixPos;
 			Eigen::Index nid2 = Nodes.get_byPos(node2Pos).matrixPos;
@@ -874,8 +893,8 @@ namespace Beams {
 				if(!isInBC) triplets_AfterBCs.emplace_back(row-minusRow, col-minusCol, val);
 			
 			//#ifdef DEBUG_PRINTS
-				if (!isInBC) triplets_AfterBCsALL.emplace_back(row, col, val);
-				else triplets_AfterBCsALL.emplace_back(row, col, -101);
+				if (isInBC) val = -101;
+				triplets_AfterBCsALL.emplace_back(row, col, val);
 			//#endif // DEBUG_PRINTS
 			
 			}
@@ -887,7 +906,7 @@ namespace Beams {
 				asd.setFromTriplets(triplets_AfterBCsALL.begin(), triplets_AfterBCsALL.end());
 				std::cout << "\n------------------------------------\n Glob Matrix with noted removed Rows/Colsn\n " << Eigen::MatrixXf(asd) << "\n";
 				std::cout << "\n------------------------------------\n Glob Matrix after row elimination\n " << Eigen::MatrixXf(globMatr) << "\n";
-
+		
 			#endif // DEBUG_PRINTS
 			
 
@@ -941,7 +960,7 @@ namespace Beams {
 
 			Eigen::SparseLU<Eigen::SparseMatrix<float>> solver;
 			solver.compute(globMatr);
-
+			
 			if (solver.info() == Eigen::Success) {
 				// Decomposition Succesfull
 				std::cout << "Sparse LU Decomposition Successful\n";
@@ -954,7 +973,7 @@ namespace Beams {
 				std::cout << "Sparse Solving Successful\n";
 				solved = true;
 				std::cout << U;
-				Urender = U * 0.1 * scaleFactor;
+				Urender = U * RENDER_SCALING_FACTOR * scaleFactor;
 #ifdef DEBUG_PRINTS
 				//std::cout << "\n--------------------------------\nForce Vector\n" << Eigen::VectorXf(F) << "\n";
 				//std::cout << "\n--------------------------------\Deflection Vector\n" << Eigen::VectorXf(U) << "\n";
@@ -962,7 +981,6 @@ namespace Beams {
 #endif // DEBUG_PRINTS
 				return;
 			}
-
 
 			std::cout << "Sparse LU decomposition failed\nConverting to Dense\n";
 			Eigen::MatrixXf A(globMatr);// DO EXCEPTION HERE if this fails Also

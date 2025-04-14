@@ -8,13 +8,14 @@
 int main()
 {
 
-    std::cout << "Hello World!\n";
+    
     Beams::Model model1;
     model1.oneElementTest();
     model1.solve();
     
     Rendering::runViewer(model1);
 
+    return 0;
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu

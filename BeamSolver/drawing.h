@@ -451,6 +451,13 @@ namespace Rendering{
         if (GuiButton(solvePos, "Solve!")) {
             model.solve();
         }
+            //quality of life improvement
+        static int prevDropdown = activeDropdownMenu;
+        if (prevDropdown != activeDropdownMenu) {
+            prevDropdown = activeDropdownMenu;
+            ActionFlags = 0;
+        }
+
         if (activeDropdownMenu == 0) {
             if (GuiButton(but1, "ADD")) {
                 ActionFlags = GuiFlags::NODE_ADD_ACTIVE;
@@ -603,7 +610,7 @@ namespace Rendering{
                 if (relativeAdd) {
                     for (size_t selectedPos : selectedNodes) {
                         const Beams::Node& selectedN = nodes.get_byPos(selectedPos);
-                        model.addNode(Vector3{ selectedN.x+ (float)xNew,selectedN.y + (float)yNew,selectedN.z + (float)zNew });
+                        model.addNode(Vector3{ (float)selectedN.x+ (float)xNew,(float)selectedN.y + (float)yNew,(float)selectedN.z + (float)zNew });
                     }
                     selectedNodes.clear();
                 }
@@ -1020,7 +1027,15 @@ namespace Rendering{
                 n2 += model.getDeflectionRender(node2.matrixPos);
             }
 
-            if (activeDropdownMenu == 1) DrawSphere(Vector3Add(n1, (Vector3Subtract(n2, n1) / 2)), 0.15f, BLUE);
+            if (activeDropdownMenu == 1) {
+                Vector3 middlePosition = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
+                DrawSphere(middlePosition, 0.15f, BLUE);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[0].coeff(0), element.localVectors[0].coeff(1), element.localVectors[0].coeff(2) },middlePosition), RED);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[1].coeff(0), element.localVectors[1].coeff(1), element.localVectors[1].coeff(2) },middlePosition), GREEN);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ element.localVectors[2].coeff(0), element.localVectors[2].coeff(1), element.localVectors[2].coeff(2) },middlePosition), BLUE);
+                
+
+            }
             DrawCapsule(n1, n2, 0.1f, 2, 2, BLUE);
         }
 
@@ -1070,7 +1085,7 @@ namespace Rendering{
                 }
 
                 collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
-                if (collision.hit) {
+                if (collision.hit && (std::find(selectedNodes.begin(), selectedNodes.end(), node.pos) == selectedNodes.end())) {
                     selectedNodes.push_back(node.pos);
                     return true;
                 }
@@ -1121,7 +1136,7 @@ namespace Rendering{
 
                 Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
                 collision = GetRayCollisionSphere(ray, elemCenter, 0.3f);
-                if (collision.hit) {
+                if (collision.hit && (std::find(selectedElems.begin(), selectedElems.end(), i) == selectedElems.end())) {
                     selectedElems.push_back(i);
                     return true;
                 }
@@ -1273,4 +1288,5 @@ namespace Rendering{
 
         }
     }
+
 }

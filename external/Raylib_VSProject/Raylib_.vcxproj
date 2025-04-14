@@ -194,7 +194,7 @@
     <TargetExt>.lib</TargetExt>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>..\..\bin\Release\</OutDir>
+    <OutDir>..\..\x64\Release\</OutDir>
     <IntDir>obj\x64\Release\raylib\</IntDir>
     <TargetName>raylib</TargetName>
     <TargetExt>.lib</TargetExt>
