@@ -280,6 +280,33 @@ namespace Rendering{
 
     };
     namespace {
+        class SelectionBox {
+            Vector2 point1{ 0 , 0 }, point2{ 0,0 };
+        public:
+            bool active = false;
+            void set_point1(Vector2&& point) {
+                point1 = point;
+            }
+            void set_point2(Vector2&& point) {
+                point2 = point;
+            }
+            Vector2 get_point1() {
+                return point1;
+            }
+            Vector2 get_point2() {
+                return point2;
+            }
+            Vector2 get_BottomLeft() {
+                return Vector2{ (point1.x < point2.x) ? point1.x : point2.x, (point1.y < point2.y) ? point1.y : point2.y };
+            };
+            Vector2 get_TopRight() {
+                return Vector2{ (point1.x > point2.x) ? point1.x : point2.x, (point1.y > point2.y) ? point1.y : point2.y };
+            };
+        };
+
+
+
+
         struct modelDrawState {
             bool deformed = false;
             std::vector<size_t> selectedNodes;
@@ -287,18 +314,19 @@ namespace Rendering{
             std::vector<size_t> infoNodes;
             std::vector<size_t> infoElems;
             int activeDropdownMenu = 0; //Which action section (for nodes, elements, sections etc) is currently active
+            SelectionBox selectionBox;
         };
     }
 
     void getInput_CameraControl(Camera3D& camera, Beams::Model& model);
     void SetupScene(Camera3D& camera);
     void RenderNodes(Beams::Model& model, modelDrawState& modelState);
-    bool getInput_pickNode(const Camera3D& camera, Beams::Model& model, modelDrawState& modelState);
+    void getInput_pickNode(const Camera3D& camera, Beams::Model& model, modelDrawState& modelState);
     void RenderElements(Beams::Model& model, modelDrawState& modelState);
-    void drawGuiActionWindows(uint32_t& ActionFlags, Beams::Model& model, modelDrawState& modelState, const Camera& camera);
+    void drawGuiActionWindows(uint32_t& ActionFlags, Beams::Model& model, modelDrawState& modelState);
     void drawInfo(uint32_t& ActionFlags, const Camera& camera, Beams::Model& model, modelDrawState& modelState);
     void drawGuiActionMenu(uint32_t& ActionFlags, Beams::Model& model, modelDrawState& modelState);
-    bool getInput_pickElem(const Camera3D& camera,  Beams::Model& model, modelDrawState &modelState);
+    void getInput_pickElem(const Camera3D& camera,  Beams::Model& model, modelDrawState &modelState);
 
 
     //TODO: Deformed Nodes calculation once and updates when solving. 
@@ -378,6 +406,7 @@ namespace Rendering{
             BeginDrawing();
             // Setup the back buffer for drawing (clear color and depth buffers)
                 ClearBackground(RAYWHITE);
+
             
                 //if file browser window is active, no rendering happens
                 GuiWindowFileDialog(&fileDialogState);
@@ -389,17 +418,27 @@ namespace Rendering{
             
                 BeginMode3D(camera);
 
+
                     RenderElements(model, modelState);
 
                     RenderNodes(model, modelState);
 
                 EndMode3D();
-
+                //if box selecting draw the box
+                SelectionBox& selectionBox = modelState.selectionBox;
+                if (selectionBox.active) {
+                    DrawRectangleV(selectionBox.get_BottomLeft(), selectionBox.get_TopRight()- selectionBox.get_BottomLeft(), Color{253, 249, 0, 100});
+                    //GuiLock();
+                    if (IsKeyPressed(KEY_A)) {
+                        Vector2 mousePos = GetMousePosition();
+                        std::cout<<"asd\n";
+                    }
+                }
                 drawInfo(ActionFlags, camera, model, modelState);
             
                 drawGuiActionMenu(ActionFlags, model, modelState);
 
-                drawGuiActionWindows(ActionFlags,model,modelState,camera);
+                drawGuiActionWindows(ActionFlags,model,modelState);
 
                 if (GuiButton(Rectangle{ (float)GetScreenWidth() - 150, 32, 65, 30 }, GuiIconText(ICON_FILE_OPEN, "Load"))) {
                     fileDialogState.windowActive = true;
@@ -528,7 +567,7 @@ namespace Rendering{
         GuiUnlock();
     }
 
-    void drawGuiActionWindows(uint32_t& ActionFlags, Beams::Model& model, modelDrawState& modelState,const Camera& camera)
+    void drawGuiActionWindows(uint32_t& ActionFlags, Beams::Model& model, modelDrawState& modelState)
     {
         //TODO! remove Camera from here. Move show info on renderNodes and Elements
         //------------------------------------------------------------------------------
@@ -647,6 +686,7 @@ namespace Rendering{
                 if (GuiWindowBox(windowPos, "Node Information")) ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
                 GuiLabel(textPos, "Pick nodes with left click. Unpick with LeftCtrl + click.\nClick CLEAR to clear selection.\nClick SELECT (or rClick) to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
                 if (GuiButton(OkButPos, "SELECT") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                    infoNodes.clear();
                     for (size_t selected : selectedNodes) {
                         infoNodes.push_back(selected);
                     }
@@ -716,7 +756,8 @@ namespace Rendering{
             {
 
                 if (GuiWindowBox(windowPos, "Element Information")) ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
-                if (GuiButton(OkButPos, "Select")) {
+                if (GuiButton(OkButPos, "Select") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                    infoElems.clear();
                     for (size_t selected : selectedElems) {
                         infoElems.push_back(selected);
                     }
@@ -941,10 +982,22 @@ namespace Rendering{
                     n1 += model.getDeflectionRender(node1.matrixPos);
                     n2 += model.getDeflectionRender(node2.matrixPos);
                 }
-                Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
+                Vector3 middlePosition = Vector3Add(n1, Vector3Subtract(n2, n1) / 2);
+
+
+
+                Vector2 elScreenPos = GetWorldToScreen(middlePosition, camera);
                 char a[20];
                 sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
-                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
+                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLACK);
+
+                //Draw Local Axes
+                auto localVectors = element.getLocalUnitVectors();
+                BeginMode3D(camera); 
+                //DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[0][0], (float)localVectors[0][1], (float)localVectors[0][2] }, middlePosition), RED); //X axis is not visible
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[1][0], (float)localVectors[1][1], (float)localVectors[1][2] }, middlePosition), GREEN);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[2][0], (float)localVectors[2][1], (float)localVectors[2][2] }, middlePosition), BLUE);
+                EndMode3D();
             }
         }
         else {
@@ -959,10 +1012,21 @@ namespace Rendering{
                     n1 += model.getDeflectionRender(node1.matrixPos);
                     n2 += model.getDeflectionRender(node2.matrixPos);
                 }
-                Vector2 elScreenPos = GetWorldToScreen(Vector3Add(n1, Vector3Subtract(n2, n1) / 2), camera);
+                Vector3 middlePosition = Vector3Add(n1, Vector3Subtract(n2, n1) / 2);
+
+                Vector2 elScreenPos = GetWorldToScreen(middlePosition, camera);
+                
                 char a[20];
                 sprintf_s(a, "NIDs %d | %d", (int)node1.matrixPos, (int)node2.matrixPos);
-                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLUE);
+                DrawText(a, (int)elScreenPos.x - MeasureText(a, 20) / 2, (int)elScreenPos.y, 20, BLACK);
+
+                //Draw Local Axes
+                auto localVectors = elements[infoPos].getLocalUnitVectors();
+                BeginMode3D(camera);
+                //DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[0][0], (float)localVectors[0][1], (float)localVectors[0][2] }, middlePosition), RED); //X axis is not visible
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[1][0], (float)localVectors[1][1], (float)localVectors[1][2] }, middlePosition), GREEN);
+                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)localVectors[2][0], (float)localVectors[2][1], (float)localVectors[2][2] }, middlePosition), BLUE);
+                EndMode3D();
             }
         }
         
@@ -1030,9 +1094,7 @@ namespace Rendering{
             if (activeDropdownMenu == 1) {
                 Vector3 middlePosition = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
                 DrawSphere(middlePosition, 0.15f, BLUE);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[0].coeff(0), (float)element.localVectors[0].coeff(1), (float)element.localVectors[0].coeff(2) },middlePosition), RED);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[1].coeff(0), (float)element.localVectors[1].coeff(1), (float)element.localVectors[1].coeff(2) },middlePosition), GREEN);
-                DrawLine3D(middlePosition, Vector3Add(Vector3{ (float)element.localVectors[2].coeff(0), (float)element.localVectors[2].coeff(1), (float)element.localVectors[2].coeff(2) },middlePosition), BLUE);
+                
                 
 
             }
@@ -1049,80 +1111,109 @@ namespace Rendering{
         }
     }
 
-    bool getInput_pickNode(const Camera3D& camera,  Beams::Model& model, modelDrawState& modelState) {
+    //TODO: Remove code duplication in pick Nodes/Elements
+    void getInput_pickNode(const Camera3D& camera,  Beams::Model& model, modelDrawState& modelState) {
         const Beams::NodeContainer& nodes = model.getNodes();
         std::vector<size_t>& selectedNodes = modelState.selectedNodes;
         bool deformed = modelState.deformed;
-    
-        if (IsKeyDown(KEY_LEFT_CONTROL) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            RayCollision collision;
-
-            for (auto& notDeleted : nodes) {
-                const Beams::Node& node = notDeleted;
-                Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
-                if (deformed) {
-                    nodeCenter += model.getDeflectionRender(node.matrixPos);
-                }
-
-                collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
-                if (collision.hit) {
-                    auto it = std::find(selectedNodes.begin(), selectedNodes.end(), node.pos);
-                    if (it != selectedNodes.end()) selectedNodes.erase(it);
-                    return true;
-                }
-            }
+        SelectionBox& selectionBox = modelState.selectionBox;
+        
+        
+        //if Click, set the first box selection point (if no box selection happens, this changes later)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            selectionBox.set_point1(GetMousePosition());
         }
+
+        //else if draging with lmb down to create box, set box selection active and update the second box selection point every frame
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && Vector2Length(GetMouseDelta()) > 0.1f) {
+            selectionBox.active = true;
+            selectionBox.set_point2(GetMousePosition());
+        }
+
+        //else if releasing the lmb with ctrl pressed, do proper action (box or point unselect)
         else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            RayCollision collision;
+
+
 
             for (auto& notDeleted : nodes) {
                 const Beams::Node& node = notDeleted;
                 Vector3 nodeCenter{ node.xRender,node.yRender,node.zRender };
+                Vector2 nodeCenter_ScreenPos = GetWorldToScreen(nodeCenter, camera);
+
                 if (deformed) {
                     nodeCenter += model.getDeflectionRender(node.matrixPos);
                 }
 
-                collision = GetRayCollisionSphere(ray, nodeCenter, 0.3f);
-                if (collision.hit && (std::find(selectedNodes.begin(), selectedNodes.end(), node.pos) == selectedNodes.end())) {
-                    selectedNodes.push_back(node.pos);
-                    return true;
+                bool isSelected = false;
+                if (selectionBox.active) {
+                    selectionBox.set_point2(GetMousePosition()); //Moving during release -> get the latest pos
+                    
+
+                    Vector2 selectionBottomLeft = selectionBox.get_BottomLeft();
+                    Vector2 selectionTopRight = selectionBox.get_TopRight();
+
+                    bool in_xRange = (selectionBottomLeft.x < nodeCenter_ScreenPos.x && nodeCenter_ScreenPos.x < selectionTopRight.x);
+                    bool in_yRange = (selectionBottomLeft.y < nodeCenter_ScreenPos.y && nodeCenter_ScreenPos.y < selectionTopRight.y);
+
+                    isSelected = in_xRange && in_yRange;
+
+                    if (isSelected && IsKeyDown(KEY_LEFT_CONTROL)) {
+                        auto it = std::find(selectedNodes.begin(), selectedNodes.end(), node.pos);
+                        if (it != selectedNodes.end()) selectedNodes.erase(it);
+                    }
+                    else if (isSelected && (std::find(selectedNodes.begin(), selectedNodes.end(), node.pos) == selectedNodes.end())) {
+                        selectedNodes.push_back(node.pos);
+                    }
+                }
+                else {//not Box Selecting
+                    //TODO: Pick closest if they overlap
+                    //TODO: Dynamic Pick Size
+                    Vector2 mousePos = GetMousePosition();
+                    float distance2d = Vector2Length(nodeCenter_ScreenPos - mousePos);
+                    
+                    //node is selected if mouse release is close enough to node 
+                    isSelected = distance2d < 20.0f;
+
+                    if (isSelected && IsKeyDown(KEY_LEFT_CONTROL)) {
+                        auto it = std::find(selectedNodes.begin(), selectedNodes.end(), node.pos);
+                        if (it != selectedNodes.end()) selectedNodes.erase(it);
+                        return;
+                    }
+                    else if (isSelected&& (std::find(selectedNodes.begin(), selectedNodes.end(), node.pos) == selectedNodes.end())) {
+                        selectedNodes.push_back(node.pos);
+                        return;
+                    }
                 }
             }
+            selectionBox.active = false;//always turn off box selection on mouse release
+
+
         }
-        return false;
+
+        
+        return ;
     }
 
-    bool getInput_pickElem(const Camera3D& camera, Beams::Model& model, modelDrawState& modelState) {
+    void getInput_pickElem(const Camera3D& camera, Beams::Model& model, modelDrawState& modelState) {
         const std::vector<Beams::vBeam>& elements = model.getElements();
         std::vector<size_t>& selectedElems = modelState.selectedElems;
-
-        if (IsKeyDown(KEY_LEFT_CONTROL) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            RayCollision collision;
-
-            for (size_t i = 0; i < elements.size(); i++) {
-                const Beams::Node& node1 = model.getNodes().get_byPos(elements[i].node1Pos);
-                const Beams::Node& node2 = model.getNodes().get_byPos(elements[i].node2Pos);
+        bool deformed = modelState.deformed;
+        SelectionBox& selectionBox = modelState.selectionBox;
 
 
-
-                Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
-                Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
-
-                Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
-                collision = GetRayCollisionSphere(ray, elemCenter, 0.3f);
-                if (collision.hit) {
-                    auto it = std::find(selectedElems.begin(), selectedElems.end(), i);
-                    if (it != selectedElems.end()) selectedElems.erase(it);
-                    return true;
-                }
-            }
+        //if Click, set the first box selection point (if no box selection happens, this changes later)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            selectionBox.set_point1(GetMousePosition());
         }
+
+        //else if draging with lmb down to create box, set box selection active and update the second box selection point every frame
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && Vector2Length(GetMouseDelta()) > 0.1f) {
+            selectionBox.active = true;
+            selectionBox.set_point2(GetMousePosition());
+        }
+
+        //else if releasing the lmb with ctrl pressed, do proper action (box or point unselect)
         else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            Ray ray = GetScreenToWorldRay(GetMousePosition(), camera);
-            RayCollision collision;
 
             for (size_t i = 0; i < elements.size(); i++) {
                 const Beams::Node& node1 = model.getNodes().get_byPos(elements[i].node1Pos);
@@ -1133,16 +1224,61 @@ namespace Rendering{
                 Vector3 n1{ node1.xRender,node1.yRender,node1.zRender };
                 Vector3 n2{ node2.xRender,node2.yRender,node2.zRender };
 
+                if (deformed) {
+                    n1+= model.getDeflectionRender(node1.matrixPos);
+                    n2 += model.getDeflectionRender(node2.matrixPos);
+                }
 
                 Vector3 elemCenter = Vector3Add(n1, (Vector3Subtract(n2, n1) / 2));
-                collision = GetRayCollisionSphere(ray, elemCenter, 0.3f);
-                if (collision.hit && (std::find(selectedElems.begin(), selectedElems.end(), i) == selectedElems.end())) {
-                    selectedElems.push_back(i);
-                    return true;
+                Vector2 elemCenter_ScreenPos = GetWorldToScreen(elemCenter,camera);
+
+                bool isSelected = false;
+                if (selectionBox.active) {
+                    selectionBox.set_point2(GetMousePosition()); //Moving during release -> get the latest pos
+
+
+                    Vector2 selectionBottomLeft = selectionBox.get_BottomLeft();
+                    Vector2 selectionTopRight = selectionBox.get_TopRight();
+
+                    bool in_xRange = (selectionBottomLeft.x < elemCenter_ScreenPos.x && elemCenter_ScreenPos.x < selectionTopRight.x);
+                    bool in_yRange = (selectionBottomLeft.y < elemCenter_ScreenPos.y && elemCenter_ScreenPos.y < selectionTopRight.y);
+
+                    isSelected = in_xRange && in_yRange;
+
+                    if (isSelected && IsKeyDown(KEY_LEFT_CONTROL)) {
+                        auto it = std::find(selectedElems.begin(), selectedElems.end(), i);
+                        if (it != selectedElems.end()) selectedElems.erase(it);
+                    }
+                    else if (isSelected && (std::find(selectedElems.begin(), selectedElems.end(), i) == selectedElems.end())) {
+                        selectedElems.push_back(i);
+                    }
+                }
+                else {//not Box Selecting
+                    //TODO: Pick closest if they overlap
+                    //TODO: Dynamic Pick Size
+                    Vector2 mousePos = GetMousePosition();
+                    float distance2d = Vector2Length(elemCenter_ScreenPos - mousePos);
+
+                    //node is selected if mouse release is close enough to node 
+                    isSelected = distance2d < 20.0f;
+
+                    if (isSelected && IsKeyDown(KEY_LEFT_CONTROL)) {
+                        auto it = std::find(selectedElems.begin(), selectedElems.end(), i);
+                        if (it != selectedElems.end()) selectedElems.erase(it);
+                        return;
+                    }
+                    else if (isSelected && (std::find(selectedElems.begin(), selectedElems.end(), i) == selectedElems.end())) {
+                        selectedElems.push_back(i);
+                        return;
+                    }
                 }
             }
+            selectionBox.active = false;//always turn off box selection on mouse release
+
+
         }
-        return false;
+
+        return;
     }
 
     //draws Nodes,Forces,BCs & overlays on selected nodes

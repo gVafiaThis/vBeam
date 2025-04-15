@@ -17,11 +17,12 @@
 //Make all stifness matrices only triangular stuff
 #include "raylib.h"
 #include <algorithm>
+
 //double error tolerance
 #define ERR_TOLERANCE 0.000000001
 #define RENDER_SCALING_FACTOR 0.1
 
-#define DEBUG_PRINTS
+//#define DEBUG_PRINTS
 
 
 
@@ -57,13 +58,14 @@ namespace Beams {
 		}*/
 	};
 
+	//UNUSED -> potentially to be used for map on nodes to check duplication. 
 	bool operator< (Node const& l, Node const& v) {
 		if (std::abs(l.x - v.x) > ERR_TOLERANCE) return l.x < v.x;
 		if (std::abs(l.y - v.y) > ERR_TOLERANCE) return l.y < v.y;
 		return l.z < v.z;
 	}
 
-	//UNUSED -> maybe for map with common local stiffness vectors mapped to element length. Not gonna b faster
+	//UNUSED -> maybe for map with common local stiffness matrices mapped to element length. 
 	class Length {
 		double l;
 
@@ -118,7 +120,7 @@ namespace Beams {
 			friend bool operator!= (const notDeleted_const_iterator& a, const notDeleted_const_iterator& b) { return a.m_pos != b.m_pos; };
 		private:	
 			//pointer m_ptr;
-			const std::vector<Node> m_nodes;
+			const std::vector<Node>& m_nodes;
 			const std::set<size_t>& m_deleted;
 			size_t m_pos;
 		};
@@ -279,11 +281,15 @@ namespace Beams {
 		Eigen::Index id;
 
 		Eigen::SparseMatrix<double> localBmatrix;
+		Eigen::SparseMatrix<double> rotMatrix; //Cosine Matrix
 
 
 		double Len;
 		//make properties for common stifness matrices
 		size_t sectionId;
+
+		std::array<Eigen::Vector3d,3> localUnitVectors;
+
 
 		void calc_BMatrixTEST() {
 			double Area = 100;
@@ -446,51 +452,13 @@ namespace Beams {
 #endif
 		};
 
-
-	public:
-		Eigen::Vector3d localVectors[3];
-
-		size_t node1Pos, node2Pos, node3Pos;
-
-
-		vBeam(Eigen::Index id_, const Node& N1, const Node& N2, const Node& N3, size_t _sectionId, const Section& section) {
-			localBmatrix.resize(12, 12);
-			id = id_;
-			
-			node1Pos = N1.pos;
-			node2Pos = N2.pos;
-			node3Pos = N3.pos;
-
-
-			sectionId = _sectionId;
-			calc_Len(N2, N1);
-
-			calc_BMatrix(section);
-		};
-
-		void reCalc(NodeContainer& Nodes, const Section& section) {
-			calc_Len(Nodes.get_byPos(node2Pos), Nodes.get_byPos(node1Pos));
-			calc_BMatrix(section);
-		}
-
-		const size_t getSectionId() const {
-			return sectionId;
-		}
-
-		Eigen::Index getID() {
-			return id;
-		}
-
-		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<double>>& globalTriplets, NodeContainer& Nodes, Section& section) {
-			//TODO: refactor stupid get_fromAll function calls. Put this in model
-			//using direction cosine matrix because reasons and it works also and no gimbal lock or whatever this stuff is 
+		void calc_LocalUnitVectors(const Node& N1, const Node& N2, const Node& N3) {
 			static const Eigen::Vector3d xAxis(1, 0, 0);
 			static const Eigen::Vector3d yAxis(0, 1, 0);
 			static const Eigen::Vector3d zAxis(0, 0, 1);
 
-
-			Eigen::Vector3d localX_unit(Nodes.get_byPos(node2Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node2Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node2Pos).z - Nodes.get_byPos(node1Pos).z);
-			Eigen::Vector3d localY_unit(Nodes.get_byPos(node3Pos).x - Nodes.get_byPos(node1Pos).x, Nodes.get_byPos(node3Pos).y - Nodes.get_byPos(node1Pos).y, Nodes.get_byPos(node3Pos).z - Nodes.get_byPos(node1Pos).z);//a vector in XY local plane
+			Eigen::Vector3d localX_unit(N2.x - N1.x, N2.y - N1.y, N2.z - N1.z);
+			Eigen::Vector3d localY_unit(N3.x - N1.x, N3.y - N1.y, N3.z - N1.z);//a vector in XY local plane
 			Eigen::Vector3d localZ_unit;
 
 
@@ -503,14 +471,25 @@ namespace Beams {
 			localZ_unit = localX_unit.cross(localY_unit);
 
 
+			//copy here has very low cost. 
+			localUnitVectors[0] = localX_unit;
+			localUnitVectors[1] = localY_unit;
+			localUnitVectors[2] = localZ_unit;
+
+		}
+
+		void calc_rotMatrix() {
+			static const Eigen::Vector3d xAxis(1, 0, 0);
+			static const Eigen::Vector3d yAxis(0, 1, 0);
+			static const Eigen::Vector3d zAxis(0, 0, 1);
+
+
+			Eigen::Vector3d localX_unit = localUnitVectors[0];
+			Eigen::Vector3d localY_unit = localUnitVectors[1];
+			Eigen::Vector3d localZ_unit = localUnitVectors[2];
+
+
 			std::vector<Eigen::Triplet<double>> dirCosineMat_triplets(37);
-			std::vector<Eigen::Triplet<double>> dirCosineMat_tripletsB(37);
-			std::vector<Eigen::Triplet<double>> dirCosineMat_tripletsC(37);
-
-
-			localVectors[0] = localX_unit;
-			localVectors[1] = localY_unit;
-			localVectors[2] = localZ_unit;
 
 
 			for (size_t i = 0; i < 12; i += 3) {
@@ -527,14 +506,60 @@ namespace Beams {
 				dirCosineMat_triplets.emplace_back(2 + i, 2 + i, localZ_unit.adjoint() * zAxis);
 			}
 
-
-			Eigen::SparseMatrix<double> cosMatrix(12, 12);
-
-
-			cosMatrix.setFromTriplets(dirCosineMat_triplets.begin(), dirCosineMat_triplets.end());
+			
+			rotMatrix.data().clear();
 
 
-			Eigen::SparseMatrix<double> globalB = cosMatrix * localBmatrix * cosMatrix.transpose();
+			rotMatrix.setFromTriplets(dirCosineMat_triplets.begin(), dirCosineMat_triplets.end());
+		}
+	public:
+
+		size_t node1Pos, node2Pos, node3Pos;
+
+
+		vBeam(Eigen::Index id_, const Node& N1, const Node& N2, const Node& N3, size_t _sectionId, const Section& section) {
+			localBmatrix.resize(12, 12);
+			rotMatrix.resize(12, 12);
+			id = id_;
+			
+			node1Pos = N1.pos;
+			node2Pos = N2.pos;
+			node3Pos = N3.pos;
+
+
+			sectionId = _sectionId;
+			calc_Len(N2, N1);
+
+			calc_BMatrix(section);
+
+			calc_LocalUnitVectors(N1, N2, N3);
+
+			calc_rotMatrix();
+		};
+
+		void reCalc(NodeContainer& Nodes, const Section& section) {
+			calc_Len(Nodes.get_byPos(node2Pos), Nodes.get_byPos(node1Pos));
+			calc_BMatrix(section);
+			calc_LocalUnitVectors(Nodes.get_byPos(node1Pos), Nodes.get_byPos(node2Pos), Nodes.get_byPos(node3Pos));
+			calc_rotMatrix();
+		}
+
+		const size_t getSectionId() const {
+			return sectionId;
+		}
+
+		Eigen::Index getID() {
+			return id;
+		}
+
+
+		void LocalMatrix2GlobalTriplets(std::vector<Eigen::Triplet<double>>& globalTriplets, NodeContainer& Nodes, Section& section) {
+			
+
+			
+
+
+			Eigen::SparseMatrix<double> globalB = rotMatrix * localBmatrix * rotMatrix.transpose();
 			//std::cout << Eigen::MatrixXd(globalB);
 #ifdef DEBUG_PRINTS
 
@@ -596,7 +621,17 @@ namespace Beams {
 			}
 		}
 
+
+		const std::array<std::array<double, 3>, 3> getLocalUnitVectors() const {
+			std::array<double, 3> xUnit{localUnitVectors[0].coeff(0), localUnitVectors[0].coeff(1), localUnitVectors[0].coeff(2)};
+			std::array<double, 3> yUnit{localUnitVectors[1].coeff(0), localUnitVectors[1].coeff(1), localUnitVectors[1].coeff(2)};
+			std::array<double, 3> zUnit{localUnitVectors[2].coeff(0), localUnitVectors[2].coeff(1), localUnitVectors[2].coeff(2)};
+			return std::array<std::array<double, 3>, 3>{xUnit,yUnit,zUnit};
+		}
+
+
 	};
+
 
 	class Model {
 		std::vector<Eigen::Triplet<double>> globalK_triplets;
@@ -620,7 +655,7 @@ namespace Beams {
 		size_t noDofs = 0;
 
 		bool solved = false;
-		//Raygui does not render large positions well (thigns far away vanish,  probably because I dont use a custom shader). Thus I divide all deflection data /10
+		//Raygui does not render large positions well (things far away vanish,  probably because I dont use a custom shader). Thus I divide all deflection data /10
 		//Done here to only do it once and not every frame.
 		Eigen::SparseVector<double> Urender;
 		double scaleFactor = 1; //scale Happens Here As Well to do it once and not in every frame
