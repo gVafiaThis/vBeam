@@ -25,9 +25,9 @@ namespace Saving {
 	}
 
 	static inline void readNode(std::ifstream& in, Beams::Model& model) {
-		float x = readVar<float>(in);
-		float y = readVar<float>(in);
-		float z = readVar<float>(in);
+		float x = readVar<double>(in);
+		float y = readVar<double>(in);
+		float z = readVar<double>(in);
 
 		model.addNode(Vector3{ x,y,z });
 	}
@@ -43,12 +43,12 @@ namespace Saving {
 	}
 
 	static inline void readSection(std::ifstream& in, Beams::Model& model) {
-		float Area = readVar<float>(in);
-		float Modulus = readVar<float>(in);
-		float G = readVar<float>(in);
-		float Ixx = readVar<float>(in);
-		float Iyy = readVar<float>(in);
-		float Izz = readVar<float>(in);
+		float Area = readVar<double>(in);
+		float Modulus = readVar<double>(in);
+		float G = readVar<double>(in);
+		float Ixx = readVar<double>(in);
+		float Iyy = readVar<double>(in);
+		float Izz = readVar<double>(in);
 		model.addSection(Area, Modulus, G, Ixx, Iyy, Izz);
 	}
 
