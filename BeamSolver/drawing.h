@@ -16,7 +16,7 @@ extern "C" {
 
 #include "saveFile.h"
 
-namespace {
+namespace {//modified or exposed raylib funcs
     //------------------------------------------------------------------------------------------------------------------------
     //HELPER FUNCTIONS FOR CAMERA - Modified from raylib core
     //------------------------------------------------------------------------------------------------------------------------
@@ -203,12 +203,6 @@ namespace {
         camera->up = Vector3RotateByAxisAngle(camera->up, forward, angle);
     }
 
-    // Returns the camera view matrix
-    Matrix GetCameraViewMatrix(Camera* camera)
-    {
-        return MatrixLookAt(camera->position, camera->target, camera->up);
-    }
-
     void CameraRotateAround(Camera* camera, Vector3 target, float yawAng, float pitchAng) {
         // Rotation axis
         Vector3 up = GetCameraUp(camera);
@@ -258,6 +252,131 @@ namespace {
         // Zoom target distance
         CameraMoveToTarget(camera, zoom);
     }
+
+    //------------------------------------------------------------------------------------------------------------------------
+    //Gui Elements - Modified from raygui
+    //------------------------------------------------------------------------------------------------------------------------
+
+    //modified GuiValueBoxFloat 
+    int v_GuiValueBoxFloat(Rectangle bounds, const char* text, char* textValue, float* value, bool editMode)
+    {
+#if !defined(RAYGUI_VALUEBOX_MAX_CHARS)
+#define RAYGUI_VALUEBOX_MAX_CHARS  32
+#endif
+
+        int result = 0;
+        GuiState state = guiState;
+
+        /*char textValue[RAYGUI_VALUEBOX_MAX_CHARS + 1] = "\0";
+        snprintf(textValue, sizeof(textValue), "%2.2f", *value);*/
+        //static char textValue[32] = "";
+
+        Rectangle textBounds = { 0 };
+        //Text will never be NULL here
+        //if (text != NULL)
+        //{
+        textBounds.width = (float)GetTextWidth(text) + 2;
+        textBounds.height = (float)GuiGetStyle(DEFAULT, TEXT_SIZE);
+        textBounds.x = bounds.x + bounds.width + GuiGetStyle(VALUEBOX, TEXT_PADDING);
+        textBounds.y = bounds.y + bounds.height / 2 - GuiGetStyle(DEFAULT, TEXT_SIZE) / 2;
+        if (GuiGetStyle(VALUEBOX, TEXT_ALIGNMENT) == TEXT_ALIGN_LEFT) textBounds.x = bounds.x - textBounds.width - GuiGetStyle(VALUEBOX, TEXT_PADDING);
+        //}
+
+        // Update control
+        //--------------------------------------------------------------------
+        if ((state != STATE_DISABLED) && !guiLocked && !guiControlExclusiveMode)
+        {
+            Vector2 mousePoint = GetMousePosition();
+
+            bool valueHasChanged = false;
+
+            if (editMode)
+            {
+                state = STATE_PRESSED;
+
+                int keyCount = (int)strlen(textValue);
+
+                // Only allow keys in range [48..57]
+                if (keyCount < RAYGUI_VALUEBOX_MAX_CHARS)
+                {
+                    if (GetTextWidth(textValue) < bounds.width)
+                    {
+                        int key = GetCharPressed();
+                        if (((key >= 48) && (key <= 57)) ||
+                            (key == '.') ||
+                            ((keyCount == 0) && (key == '+')) ||  // NOTE: Sign can only be in first position
+                            ((keyCount == 0) && (key == '-')))
+                        {
+                            textValue[keyCount] = (char)key;
+                            keyCount++;
+
+                            valueHasChanged = true;
+                        }
+                    }
+                }
+
+                // Pressed backspace
+                if (IsKeyPressed(KEY_BACKSPACE))
+                {
+                    if (IsKeyDown(KEY_LEFT_CONTROL)) {
+                        while (keyCount != 0) {
+                            keyCount--;
+                            textValue[keyCount] = '\0';
+                        }
+                        valueHasChanged = true;
+                    }
+                    else if (keyCount > 0)
+                    {
+                        keyCount--;
+                        textValue[keyCount] = '\0';
+                        valueHasChanged = true;
+                    }
+                }
+
+                if (valueHasChanged) *value = TextToFloat(textValue);
+
+                if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) || IsKeyPressed(KEY_TAB) || (!CheckCollisionPointRec(mousePoint, bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))) result = 1;
+            }
+            else
+            {
+                if (CheckCollisionPointRec(mousePoint, bounds))
+                {
+                    state = STATE_FOCUSED;
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) result = 1;
+                }
+            }
+        }
+        //--------------------------------------------------------------------
+
+        // Draw control
+        //--------------------------------------------------------------------
+        Color baseColor = BLANK;
+        if (state == STATE_PRESSED) baseColor = GetColor(GuiGetStyle(VALUEBOX, BASE_COLOR_PRESSED));
+        else if (state == STATE_DISABLED) baseColor = GetColor(GuiGetStyle(VALUEBOX, BASE_COLOR_DISABLED));
+
+        GuiDrawRectangle(bounds, GuiGetStyle(VALUEBOX, BORDER_WIDTH), GetColor(GuiGetStyle(VALUEBOX, BORDER + (state * 3))), baseColor);
+        if (textValue[0] == '\0')  GuiDrawText("0", GetTextBounds(VALUEBOX, bounds), TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(VALUEBOX, TEXT + (state * 3))));
+
+        else GuiDrawText(textValue, GetTextBounds(VALUEBOX, bounds), TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(VALUEBOX, TEXT + (state * 3))));
+        // Draw cursor
+        if (editMode)
+        {
+            // NOTE: ValueBox internal text is always centered
+            Rectangle cursor = { bounds.x + GetTextWidth(textValue) / 2 + bounds.width / 2 + 1,
+                                bounds.y + 2 * GuiGetStyle(VALUEBOX, BORDER_WIDTH), 4,
+                                bounds.height - 4 * GuiGetStyle(VALUEBOX, BORDER_WIDTH) };
+            GuiDrawRectangle(cursor, 0, BLANK, GetColor(GuiGetStyle(VALUEBOX, BORDER_COLOR_PRESSED)));
+        }
+
+        // Draw text label if provided
+        GuiDrawText(text, textBounds,
+            (GuiGetStyle(VALUEBOX, TEXT_ALIGNMENT) == TEXT_ALIGN_RIGHT) ? TEXT_ALIGN_LEFT : TEXT_ALIGN_RIGHT,
+            GetColor(GuiGetStyle(LABEL, TEXT + (state * 3))));
+        //--------------------------------------------------------------------
+
+        return result;
+    }
+
 }
 
 namespace Rendering{
@@ -304,9 +423,7 @@ namespace Rendering{
             };
         };
 
-
-
-
+        
         struct modelDrawState {
             bool deformed = false;
             std::vector<size_t> selectedNodes;
@@ -621,31 +738,44 @@ namespace Rendering{
 
         if (GuiFlags::NODE_ADD_ACTIVE & ActionFlags)
         {
-            static int xNew;
-            static int yNew;
-            static int zNew;
-            static bool xActive = false, yActive = false, zActive = false;
-            static bool xNeg = false;
-            static bool yNeg = false;
-            static bool zNeg = false;
+
+            //static bool xNeg = false;
+            //static bool yNeg = false;
+            //static bool zNeg = false;
             static bool relativeAdd = false;
 
-            if (GuiWindowBox(windowPos, "AddNode")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
-            if (GuiValueBox(xInputPos, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
-            if (GuiValueBox(yInputPos, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
-            if (GuiValueBox(zInputPos, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
-            GuiCheckBox(xNegPos, "Neg", &xNeg);
-            GuiCheckBox(yNegPos, "Neg", &yNeg);
-            GuiCheckBox(zNegPos, "Neg", &zNeg);
+            static float xNew;
+            static float yNew;
+            static float zNew;
+            static char xText[33];
+            static char yText[33];
+            static char zText[33];
+            static bool xActive = false, yActive = false, zActive = false;
+
+
+            if (GuiWindowBox(windowPos, "Add Node")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
+            if (v_GuiValueBoxFloat(xInputPos, "X", &xText[0], & xNew, xActive)){
+                xActive = !xActive;
+                if (IsKeyPressed(KEY_TAB)) yActive = true;
+            }
+            else if (v_GuiValueBoxFloat(yInputPos, "Y", &yText[0], & yNew, yActive)){
+                yActive = !yActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) xActive = true;
+                else if (IsKeyPressed(KEY_TAB)) zActive = true;
+            }
+            else if (v_GuiValueBoxFloat(zInputPos, "Z", &zText[0], &zNew, zActive)){
+                zActive = !zActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) yActive = true;
+            }
+            else if (IsKeyPressed(KEY_TAB)) xActive = true;
+
+
             GuiToggle(clearButIndentedPos, "Relative Add", &relativeAdd);
-            
-
-
             if (GuiButton(OkButPos, "ADD NODE!") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
                 //NodeAddActive = false;
-                xNew = (xNeg) ? -xNew : xNew;
-                yNew = (yNeg) ? -yNew : yNew;
-                zNew = (zNeg) ? -zNew : zNew;
+                //xNew = (xNeg) ? -xNew : xNew;
+                //yNew = (yNeg) ? -yNew : yNew;
+                //zNew = (zNeg) ? -zNew : zNew;
                 if (relativeAdd) {
                     for (size_t selectedPos : selectedNodes) {
                         const Beams::Node& selectedN = nodes.get_byPos(selectedPos);
@@ -743,7 +873,7 @@ namespace Rendering{
                         model.removeElement(selected);
                     }
                     selectedElems.clear();
-
+                    
                 };
                 if (GuiButton(clearButPos, "CLEAR")) {
                     selectedElems.clear();
@@ -835,27 +965,36 @@ namespace Rendering{
 
         if (GuiFlags::FORCE_ADD_ACTIVE & ActionFlags)
         {
-            static int xNew;
-            static int yNew;
-            static int zNew;
+
+            static float xNew;
+            static float yNew;
+            static float zNew;
+            static char xText[33];
+            static char yText[33];
+            static char zText[33];
             static bool xActive = false, yActive = false, zActive = false;
-            static bool xNeg = false;
-            static bool yNeg = false;
-            static bool zNeg = false;
+
 
             if (GuiWindowBox(windowPos, "Add Force")) ActionFlags &= ~GuiFlags::FORCE_ADD_ACTIVE;
-            if (GuiValueBox(xInputPos, "X", &xNew, -10000, 10000, xActive)) xActive = !xActive;
-            if (GuiValueBox(yInputPos, "Y", &yNew, -10000, 10000, yActive)) yActive = !yActive;
-            if (GuiValueBox(zInputPos, "Z", &zNew, -10000, 10000, zActive)) zActive = !zActive;
-            GuiCheckBox(xNegPos, "Neg", &xNeg);
-            GuiCheckBox(yNegPos, "Neg", &yNeg);
-            GuiCheckBox(zNegPos, "Neg", &zNeg);
+            if (v_GuiValueBoxFloat(xInputPos, "X", &xText[0], &xNew, xActive)) {
+                xActive = !xActive;
+                if (IsKeyPressed(KEY_TAB)) yActive = true;
+            }
+            else if (v_GuiValueBoxFloat(yInputPos, "Y", &yText[0], &yNew, yActive)) {
+                yActive = !yActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) xActive = true;
+                else if (IsKeyPressed(KEY_TAB)) zActive = true;
+            }
+            else if (v_GuiValueBoxFloat(zInputPos, "Z", &zText[0], &zNew, zActive)) {
+                zActive = !zActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) yActive = true;
+            }
+            else if (IsKeyPressed(KEY_TAB)) xActive = true;
+
             GuiLabel(textIndentedPos, "Pick Nodes and insert Force vector coordinates\nToggle NEG for Negative Values\nADD FORCE (or rClick) adds the force to selected Nodes\nCLEAR clears selected Nodes");
             if ((GuiButton(OkButPos, "ADD FORCE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
                 for (auto nodePos : selectedNodes) {
-                    xNew = (xNeg) ? -xNew : xNew;
-                    yNew = (yNeg) ? -yNew : yNew;
-                    zNew = (zNeg) ? -zNew : zNew;
+                    
                     model.addForce(nodePos, 0, xNew);
                     model.addForce(nodePos, 1, yNew);
                     model.addForce(nodePos, 2, zNew);
@@ -950,7 +1089,8 @@ namespace Rendering{
 
                 Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
                 char a[20];
-                sprintf_s(a, "ID %d", (int)node.matrixPos);
+                int matrixPos = (node.free_flag) ? -1 : (int)node.matrixPos;
+                sprintf_s(a, "ID %d\nDoF Group: %d",node.pos, matrixPos);
                 DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
             }
         }
@@ -965,12 +1105,12 @@ namespace Rendering{
                 Vector3 deformsCorrect = model.getDeflection(node.matrixPos);
                 Vector2 nodeScreenPos = GetWorldToScreen(nodeCoords, camera);
                 char a[64];
-                sprintf_s(a, "ID %d\nDeformations:\nX: %f\nY: %f\nZ: %f", (int)node.matrixPos, deformsCorrect.x, deformsCorrect.y, deformsCorrect.z);
+                sprintf_s(a, "ID %d\nDeformations:\nX: %f\nY: %f\nZ: %f", (int)node.pos, deformsCorrect.x, deformsCorrect.y, deformsCorrect.z);
                 DrawText(a, (int)nodeScreenPos.x - MeasureText(a, 20) / 2, (int)nodeScreenPos.y, 20, BLACK);
             }
         }
 
-        if (GuiFlags::SHOW_ELEM_INFO & ActionFlags) {
+        if (GuiFlags::SHOW_ELEM_INFO & ActionFlags) {   
             for (auto& element : elements) {
                 const Beams::Node& node1 = nodes.get_byPos(element.node1Pos);
                 const Beams::Node& node2 = nodes.get_byPos(element.node2Pos);

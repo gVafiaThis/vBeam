@@ -3,6 +3,8 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <array>
 #include <math.h>
 #include <numeric>
@@ -634,11 +636,9 @@ namespace Beams {
 
 
 	class Model {
-		std::vector<Eigen::Triplet<double>> globalK_triplets;
-
-		Eigen::SparseVector<double> U, F;
 
 		NodeContainer Nodes;
+		std::vector<size_t> nodesPos_InMatrixOrder;
 
 		std::map<size_t,Section> Sections;
 		size_t secIdNext = 0;
@@ -646,19 +646,19 @@ namespace Beams {
 		std::vector<vBeam> Elements;
 		Eigen::Index eId_Last = 0;
 
-		std::vector<size_t> nodes_InMatrixOrder;
+
+		size_t noDofs = 0;
+		bool solved = false;
 
 		std::set<size_t> BCpinned;//UNUSED- and going to be unused.
 		std::set<size_t> BCfixed;
 		std::map<size_t, std::array<double, 6>> Forces;//node position to force. Position refers to All nodes, taking into account the deleted stuff.
 
-		size_t noDofs = 0;
-
-		bool solved = false;
+		Eigen::SparseVector<double> U, F;
 		//Raygui does not render large positions well (things far away vanish,  probably because I dont use a custom shader). Thus I divide all deflection data /10
 		//Done here to only do it once and not every frame.
 		Eigen::SparseVector<double> Urender;
-		double scaleFactor = 1; //scale Happens Here As Well to do it once and not in every frame
+		double scaleFactor = 1; //scale for output deformations
 		
 
 		
@@ -709,23 +709,7 @@ namespace Beams {
 			Elements.emplace_back(eId_Last, Nodes.get_byPos(n1Pos), Nodes.get_byPos(n2Pos), Nodes.get_byPos(n3Pos), sectionID, Sections[sectionID]);
 			Sections[sectionID].inElements.emplace_back(eId_Last);
 
-			//get whether the element's nodes were not used in the stifness matrix
-			bool n1Free = Nodes.getFree_byPos(n1Pos);
-			bool n2Free = Nodes.getFree_byPos(n2Pos);
-
-
-			//ADD DOFs to problem
-			noDofs += ((int)n1Free + (int)n2Free) * 6;
-
-			//Set Node positions in the stifness matrix
-			if (n1Free) {//it goes in the back of the matrix order
-				Nodes.setMatrixPos_byPos(n1Pos, nodes_InMatrixOrder.size());
-				nodes_InMatrixOrder.push_back(n1Pos);
-			}
-			if (n2Free) {//it goes in the back of the matrix order
-				Nodes.setMatrixPos_byPos(n2Pos, nodes_InMatrixOrder.size());
-				nodes_InMatrixOrder.push_back(n2Pos);
-			}
+			
 
 			//Update Nodes that are part of Element
 			Nodes.add_InElement_byPos(n1Pos, eId_Last);
@@ -736,28 +720,6 @@ namespace Beams {
 
 			eId_Last++;
 			return true;
-		}
-
-		bool removeElementId(Eigen::Index eId) {//UNUSED
-			//TODO: should do binary search here. Elements are ID sorted (ensure this 100% first)
-			size_t counter = 0;
-			for (counter = 0; counter < Elements.size(); counter++) {// E ti na kanw re file kakos tropos gia na ta kanw iterate. Binary Search?<----------------------------------;
-				vBeam& el = Elements[counter];
-				if (el.getID() == eId) {
-
-					Nodes.remove_InElement_byPos(el.node1Pos,eId);
-					Nodes.remove_InElement_byPos(el.node2Pos,eId);
-					Nodes.remove_InElement_byPos(el.node3Pos,eId);
-
-					
-					Elements.erase(Elements.begin() + counter); //menoun ta alla. Tha mporousa na ta kanw iterate kai na riksw ta elID tous... Alla tha eprepe na allaksei to inElements.
-
-					//break;
-					solved = false;
-					return true;
-				}
-			}
-			return false;
 		}
 
 		bool removeElement(size_t ePos) {
@@ -773,32 +735,7 @@ namespace Beams {
 			Nodes.remove_InElement_byPos(el.node3Pos, eId);
 
 
-			//Housekeeping for node DOFs order. 
-			//TODO: Make this more efficient, not passsing twice each time 
-			const Node& n1 = Nodes.get_byPos(el.node1Pos);
-			const Node& n2 = Nodes.get_byPos(el.node2Pos);
-
-			if (n1.free_flag) {//it became free now
-				for (size_t i = n1.matrixPos+1; i < nodes_InMatrixOrder.size(); i++) {
-					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_byPos(nextNodePos,Nodes.get_byPos(nextNodePos).matrixPos-1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
-				}
-				noDofs -= 6;
-				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n1.matrixPos);
-				Nodes.setMatrixPos_byPos(n1.pos, -1);
-			}
-			if (n2.free_flag) {//it became free now
-				for (size_t i = n2.matrixPos + 1; i < nodes_InMatrixOrder.size(); i++) {
-					size_t nextNodePos = nodes_InMatrixOrder[i];
-					Nodes.setMatrixPos_byPos(nextNodePos, Nodes.get_byPos(nextNodePos).matrixPos - 1); //for the next Nodes (in matrix order) reduce the matrixPosition by 1
-				}
-				noDofs -= 6;
-				nodes_InMatrixOrder.erase(nodes_InMatrixOrder.begin() + n2.matrixPos);
-				Nodes.setMatrixPos_byPos(n2.pos, -1);
-
-			}
-
-
+			
 
 			Elements.erase(Elements.begin() + ePos); 
 
@@ -853,12 +790,39 @@ namespace Beams {
 			//Setup 
 			//----------------------------------------------------------------------------------------------------
 			//TODO: Check for unconstrained model
+			std::vector<Eigen::Triplet<double>> globalK_triplets;//Contains global stiffness matrix triplets
 			
-			globalK_triplets.clear();
+
 			if (BCfixed.size() + BCpinned.size() < 1) {
 				solved = false;
 				return;
 			}
+
+
+			//----------------------------------------------------------------------------------------------------
+			//Setting of node dof positions in stiffness matrix
+			//----------------------------------------------------------------------------------------------------
+			nodesPos_InMatrixOrder.clear();
+			noDofs = 0;
+			std::unordered_set<size_t> included;
+			for (auto& element : Elements) {
+				size_t n1Pos = element.node1Pos;
+				size_t n2Pos = element.node2Pos;
+
+
+				if (included.emplace(n1Pos).second) {
+					Nodes.setMatrixPos_byPos(n1Pos, nodesPos_InMatrixOrder.size());
+					nodesPos_InMatrixOrder.push_back(n1Pos);
+					noDofs += 6;
+				}
+
+				if (included.emplace(n2Pos).second) {
+					Nodes.setMatrixPos_byPos(n2Pos, nodesPos_InMatrixOrder.size());
+					nodesPos_InMatrixOrder.push_back(n2Pos);
+					noDofs += 6;
+				}
+			}
+
 			if (noDofs < 1) return;
 			
 			#ifdef DEBUG_PRINTS
@@ -868,7 +832,7 @@ namespace Beams {
 
 
 			//----------------------------------------------------------------------------------------------------
-			//Populate global stigness matrix (triplets) from each element
+			//Populate global stiffness matrix (triplets) from each element
 			//----------------------------------------------------------------------------------------------------
 			#ifdef DEBUG_PRINTS
 				Eigen::SparseMatrix<double> testGlobAll(noDofs, noDofs);
@@ -1055,8 +1019,8 @@ namespace Beams {
 		Vector3 getDeflectionRender(size_t nodeMatrixPos) {//doesn't give rotations. 
 			if (!solved) return Vector3Zero();
 
-			if (nodeMatrixPos >= nodes_InMatrixOrder.size()) return Vector3Zero();//not in stifness matrix
-			const Node& node = Nodes.get_byPos(nodes_InMatrixOrder[nodeMatrixPos]);
+			if (nodeMatrixPos >= nodesPos_InMatrixOrder.size()) return Vector3Zero();//not in stifness matrix
+			const Node& node = Nodes.get_byPos(nodesPos_InMatrixOrder[nodeMatrixPos]);
 
 			if (node.free_flag) return Vector3Zero();
 
@@ -1167,7 +1131,6 @@ namespace Beams {
 		}
 	
 		void clear() {
-			globalK_triplets.clear();
 			U.data().clear();
 			F.data().clear();
 
@@ -1180,7 +1143,7 @@ namespace Beams {
 			Elements.clear();
 			eId_Last = 0;
 
-			nodes_InMatrixOrder.clear();
+			nodesPos_InMatrixOrder.clear();
 
 			BCpinned.clear();//UNUSED- and going to be unused.
 			BCfixed.clear();
