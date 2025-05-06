@@ -700,6 +700,49 @@ namespace Beams {
 			Nodes.remove(pos);	
 		}
 
+		std::unordered_map<size_t, size_t> findDuplicateNodes() {
+			std::set<Node> originals;
+			std::unordered_map<size_t, size_t> posMap;
+
+			for (auto& node : Nodes) {
+				auto emplacePair = originals.emplace(node);
+				if (!emplacePair.second) posMap[node.pos] = emplacePair.first->pos;
+			}
+
+			return posMap;
+		}
+
+		void removeDuplicateNodes(std::unordered_map<size_t, size_t>& posMap) {
+			for (auto& pair : posMap) {
+				size_t duplicateNodePos = pair.first;
+				size_t originalNodePos = pair.second;
+				const Node& originalNode = Nodes.get_byPos(originalNodePos);
+				const Node& duplicateNode = Nodes.get_byPos(duplicateNodePos);
+
+				const std::set<Eigen::Index> inElems = duplicateNode.inElements;//COPY because we remove things from node.inElements
+				for (auto& elementId : inElems) {
+					if (originalNode.free_flag) Nodes.setFree_byPos(originalNodePos, duplicateNode.free_flag);
+					vBeam& element = Elements[getElementPos_byId(elementId)];
+					
+					if (element.node1Pos == duplicateNodePos) element.node1Pos = originalNodePos;
+					else if (element.node2Pos == duplicateNodePos) element.node2Pos = originalNodePos;
+					else if (element.node3Pos == duplicateNodePos) element.node3Pos = originalNodePos;
+					else throw std::runtime_error("Something Failed in removeDuplicateNodes");//for testing purposes. 
+				
+					Nodes.remove_InElement_byPos(duplicateNodePos,elementId);
+				}
+
+
+				removeNode(duplicateNodePos);
+
+			}
+		}
+
+		void removeDuplicateNodes() {
+			std::unordered_map<size_t, size_t> posMap = findDuplicateNodes();
+			removeDuplicateNodes(posMap);
+		}
+
 		bool addElement(size_t n1Pos, size_t n2Pos, size_t n3Pos, size_t sectionID) {
 
 			if (Sections.size() - 1 < sectionID) return false;
@@ -744,6 +787,15 @@ namespace Beams {
 
 		}
 
+		size_t getElementPos_byId(Eigen::Index id) {
+			auto comparer = [](vBeam& e1, Eigen::Index val) {return e1.getID() < val; };
+
+			auto i = std::lower_bound(Elements.begin(), Elements.end(), id, comparer);
+			if (i == Elements.end()) return -1;
+			while (i->getID() != id) ++i;
+			return i - Elements.begin();
+		}
+
 		void oneElementTest() {
 
 			addNode(Vector3{ 0,0,0 });
@@ -752,10 +804,15 @@ namespace Beams {
 			addNode(Vector3{ 100, 0, 0 });
 			addNode(Vector3{ 150, 0, 0 });
 			addNode(Vector3{ 200, 0, 0 });
-			addNode(Vector3{ 25, 50, 0 });
+			/*addNode(Vector3{ 25, 50, 0 });
 			addNode(Vector3{ 75, 50, 0 });
-			addNode(Vector3{ 125, 50, 0 });
-
+			addNode(Vector3{ 125, 50, 0 });*/
+			addNode(Vector3{ 100, 0, 0 });
+			addNode(Vector3{ 100, 50, 0 });
+			addNode(Vector3{ 150, 0, 0 });
+			addNode(Vector3{ 150, 50, 0 });
+			addNode(Vector3{ 200, 0, 0 });
+			addNode(Vector3{ 200, 50, 0 });
 
 			addSection(100, 210000, 80000, 1000, 100, 100);
 
@@ -763,6 +820,9 @@ namespace Beams {
 			addElement(1, 3, 2, 0);
 			addElement(3, 4, 2, 0);
 			addElement(4, 5, 2, 0);
+			addElement(6, 7, 2, 0);
+			addElement(8, 9, 2, 0);
+			addElement(10, 11, 2, 0);
 
 
 			BCfixed.emplace(0);

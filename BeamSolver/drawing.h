@@ -710,7 +710,9 @@ namespace Rendering{
         Rectangle windowPos{ 424.0f/1280.0f*width, 8.0f/800.0f*height, 448.0f/1280.0f*width, 136.0f/800.0f*height };
 
         Rectangle OkButPos{ 736.0f/1280.0f*width, 112.0f/800.0f*height, 120.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle MiddleButPos{ 588.0f / 1280.0f * width, 112.0f / 800.0f * height, 120.0f / 1280.0f * width, 24.0f / 800.0f * height };
         Rectangle clearButPos{ 440.0f/1280.0f*width, 112.0f/800.0f*height, 120.0f/1280.0f*width, 24.0f/800.0f*height };
+        Rectangle clearButIndentedPos{ 560.0f / 1280.0f * width, 112.0f / 800.0f * height, 120.0f / 1280.0f * width, 24.0f / 800.0f * height };
 
         Rectangle xInputPos{ 444.0f/1280.0f*width, 43.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
         Rectangle yInputPos{ 444.0f/1280.0f*width, 75.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
@@ -718,10 +720,9 @@ namespace Rendering{
         Rectangle xNegPos{ 506.0f/1280.0f*width, 43.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
         Rectangle yNegPos{ 506.0f/1280.0f*width, 75.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
         Rectangle zNegPos{ 506.0f/1280.0f*width, 107.0f/800.0f*height, 24.0f/1280.0f*width, 24.0f/800.0f*height };
-        Rectangle textIndentedPos{ 560.0f/1280.0f*width, 43.0f/800.0f*height, 350.0f/1280.0f*width, 56.0f/800.0f*height };
-        Rectangle clearButIndentedPos{ 560.0f / 1280.0f * width, 112.0f / 800.0f * height, 120.0f / 1280.0f * width, 24.0f / 800.0f * height };
 
         Rectangle textPos{ 436.0f/1280.0f*width, 40.0f/800.0f*height, 400.0f/1280.0f*width, 56.0f/800.0f*height };
+        Rectangle textIndentedPos{ 560.0f/1280.0f*width, 43.0f/800.0f*height, 350.0f/1280.0f*width, 56.0f/800.0f*height };
         Rectangle listPos{ 432.0f/1280.0f*width, 40.0f/800.0f*height, 120.0f/1280.0f*width, 96.0f/800.0f*height };
 
         Rectangle secArea_InputPos{ 580.0f/1280.0f*width, 40.0f/800.0f*height, 56.0f/1280.0f*width, 24.0f/800.0f*height };
@@ -792,18 +793,43 @@ namespace Rendering{
 
         if (GuiFlags::NODE_REMOVE_ACTIVE & ActionFlags) {
             {
-
+                static bool showingDuplicates = false;
+                static std::unordered_map<size_t, size_t> duplicateNodePositions;
                 static bool toggleActive = false;
                 if (GuiWindowBox(windowPos, "RemoveNode")) ActionFlags &= ~GuiFlags::NODE_REMOVE_ACTIVE;
                 GuiLabel(textPos, "Pick nodes with left click. Unpick with LeftCtrl + click.\nClick CLEAR to clear selection.\nClick REMOVE (or rClick) to remove selected.\nNodes also remove Elements.");
 
-                if (GuiButton(OkButPos, "REMOVE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
-                    std::sort(selectedNodes.rbegin(), selectedNodes.rend());
-                    for (size_t selected : selectedNodes) {
-                        model.removeNode(selected);
+                if (!showingDuplicates) {
+                    if (GuiButton(OkButPos, "REMOVE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                        std::sort(selectedNodes.rbegin(), selectedNodes.rend());
+                        for (size_t selected : selectedNodes) {
+                            model.removeNode(selected);
+                        }
+                        selectedNodes.clear();
+                    };
+
+                    if (GuiButton(MiddleButPos, "SHOW DUPLICATES")) {
+                        selectedNodes.clear();
+                        duplicateNodePositions.clear();
+                        duplicateNodePositions = model.findDuplicateNodes();
+                        for (auto posPair : duplicateNodePositions) selectedNodes.push_back(posPair.first);
+                        showingDuplicates = true;
                     }
+                }
+                else {
+
+
+                    if (GuiButton(OkButPos, "REMOVE DUPLICATES") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                        model.removeDuplicateNodes(duplicateNodePositions);
+                        duplicateNodePositions.clear();
+                        showingDuplicates = false;
+                        selectedNodes.clear();
+                    };
+                }
+                if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
-                };
+                    showingDuplicates = false;
+                }
 
                 if (GuiButton(clearButPos, "CLEAR")) {
                     selectedNodes.clear();
