@@ -395,8 +395,8 @@ namespace Rendering{
         SHOW_FORCE_INFO = 1 << 10,
         BC_ADD_ACTIVE = 1 << 11,
         BC_REMOVE_ACTIVE = 1 << 12,
-        SHOW_BC_INFO = 1 << 13
-
+        SHOW_BC_INFO = 1 << 13,
+        EL_COPY_ACTIVE = 1<<14
     };
     namespace {
         class SelectionBox {
@@ -513,7 +513,7 @@ namespace Rendering{
             else selectedNodes.clear();
 
 
-            bool elemPicking = ActionFlags & (GuiFlags::EL_REMOVE_ACTIVE | GuiFlags::SHOW_ELEM_INFO);
+            bool elemPicking = ActionFlags & (GuiFlags::EL_REMOVE_ACTIVE | GuiFlags::SHOW_ELEM_INFO | GuiFlags::EL_COPY_ACTIVE);
             if (elemPicking) {
                 getInput_pickElem(camera, model, modelState);
             }
@@ -599,6 +599,8 @@ namespace Rendering{
         static const Rectangle but1{ 160, 8 + 24, 50, 28 };
         static const Rectangle but2{ 218, 8 + 24, 50, 28 };
         static const Rectangle but3{ 276, 8 + 24, 50, 28 };
+        static const Rectangle but4{ 334, 8 + 24, 50, 28 };
+
         static const Rectangle labelPos{ 12, 10, 140, 24 };
         Rectangle solvePos{ 12, height-40, 140, 28 };
 
@@ -646,6 +648,10 @@ namespace Rendering{
                     selectedElems.push_back(infoPos);
                 }
             }
+            if (GuiButton(but4, "COPY")) {
+                ActionFlags = GuiFlags::EL_COPY_ACTIVE;
+            }
+            
         }
         else if (activeDropdownMenu == 2) {
             if (GuiButton(but1, "MANAGE")) {
@@ -769,7 +775,7 @@ namespace Rendering{
                 if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) yActive = true;
             }
             else if (IsKeyPressed(KEY_TAB)) xActive = true;
-
+            GuiLabel(textIndentedPos, "Set Coordinates and ADD NODE (or rClick)\nPick existing nodes and toggle Relative Add\n to add nodes relative to the ones picked\nHold LeftCtrl and click or Box select to unpick");
 
             GuiToggle(clearButIndentedPos, "Relative Add", &relativeAdd);
             if (GuiButton(OkButPos, "ADD NODE!") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
@@ -797,7 +803,7 @@ namespace Rendering{
                 static std::unordered_map<size_t, size_t> duplicateNodePositions;
                 static bool toggleActive = false;
                 if (GuiWindowBox(windowPos, "RemoveNode")) ActionFlags &= ~GuiFlags::NODE_REMOVE_ACTIVE;
-                GuiLabel(textPos, "Pick nodes with left click. Unpick with LeftCtrl + click.\nClick CLEAR to clear selection.\nClick REMOVE (or rClick) to remove selected.\nNodes also remove Elements.");
+                GuiLabel(textPos, "Pick with lClick or Box Select. Hold LeftCtrl to unpick.\nClick CLEAR to clear selection.\nClick REMOVE (or rClick) to remove selected.\nNodes also remove Elements.");
 
                 if (!showingDuplicates) {
                     if (GuiButton(OkButPos, "REMOVE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
@@ -831,16 +837,13 @@ namespace Rendering{
                     showingDuplicates = false;
                 }
 
-                if (GuiButton(clearButPos, "CLEAR")) {
-                    selectedNodes.clear();
-                }
             }
         }
 
         if (GuiFlags::SHOW_NODE_INFO & ActionFlags) {
             {
                 if (GuiWindowBox(windowPos, "Node Information")) ActionFlags &= ~GuiFlags::SHOW_NODE_INFO;
-                GuiLabel(textPos, "Pick nodes with left click. Unpick with LeftCtrl + click.\nClick CLEAR to clear selection.\nClick SELECT (or rClick) to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
+                GuiLabel(textPos, "Pick with lClick or Box Select. Hold LeftCtrl to unpick.\nClick CLEAR to clear selection.\nClick SELECT (or rClick) to view info for selected Nodes.\nThe info persists unless the nodes are unpicked or cleared.");
                 if (GuiButton(OkButPos, "SELECT") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
                     infoNodes.clear();
                     for (size_t selected : selectedNodes) {
@@ -875,7 +878,7 @@ namespace Rendering{
             if (GuiWindowBox(windowPos, "Create Element")) ActionFlags &= ~GuiFlags::EL_ADD_ACTIVE;
             GuiListView(listPos, listNames.data(), &ListViewTop, &sectionId);
             //std::string info = "Pick 3 nodes and the corresponding section.";
-            GuiLabel(textIndentedPos, "Pick 3 nodes and the corresponding section.\nManage Section Properties in \"Sections\" from the dropdown\nADD ELEMENT (or rClick) adds the element\n");
+            GuiLabel(textIndentedPos, "Pick 3 nodes and the corresponding section.\nThe third node determines the beam orientation.\nManage Section Properties in \"Sections\" from the dropdown.\nADD ELEMENT (or rClick) adds the element.");
             if ((GuiButton(OkButPos, "ADD ELEMENT") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) && selectedNodes.size() == 3) {
                 //NodeAddActive = false;
                 model.addElement(selectedNodes[0], selectedNodes[1], selectedNodes[2], static_cast<size_t>(sectionId));
@@ -891,16 +894,36 @@ namespace Rendering{
 
         if (GuiFlags::EL_REMOVE_ACTIVE & ActionFlags) {
             {
+                static bool showingDuplicates = false;
+                static std::vector<size_t> duplicateElemPositions;
+
                 if (GuiWindowBox(windowPos, "RemoveElement")) ActionFlags &= ~GuiFlags::EL_REMOVE_ACTIVE;
-                GuiLabel(textPos, "Pick elements with left click. Unpick with LeftCtrl + click.\nClick CLEAR (or rClick) to clear selection.\nClick Remove to remove selected.\n");
-                if (GuiButton(OkButPos, "REMOVE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
-                    std::sort(selectedElems.rbegin(), selectedElems.rend());//reverse sort
-                    for (size_t selected : selectedElems) {
-                        model.removeElement(selected);
+                GuiLabel(textPos, "Pick elements with lClick (or BoxSelect).\nUnpick with LeftCtrl + lClick (or BoxSelect).\nCLEAR clears selection. Remove (or rClick) removes selected.\nDuplicate Elements are only counted if duplicate Nodes are removed");
+                if (!showingDuplicates) {
+                    if (GuiButton(OkButPos, "REMOVE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                        std::sort(selectedElems.rbegin(), selectedElems.rend());//reverse sort
+                        for (size_t selected : selectedElems) {
+                            model.removeElement(selected);
+                        }
+                        selectedElems.clear();
+
+                    };
+                    if (GuiButton(MiddleButPos, "SHOW DUPLICATES")) {
+                        selectedElems.clear();
+                        duplicateElemPositions.clear();
+                        duplicateElemPositions = model.findDuplicateElements();
+                        for (auto pos : duplicateElemPositions) selectedElems.push_back(pos);
+                        showingDuplicates = true;
                     }
-                    selectedElems.clear();
-                    
-                };
+                }
+                else {
+                    if (GuiButton(OkButPos, "REMOVE DUPLICATES") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                        model.removeDuplicateElems(duplicateElemPositions);
+                        duplicateElemPositions.clear();
+                        showingDuplicates = false;
+                        selectedElems.clear();
+                    };
+                }
                 if (GuiButton(clearButPos, "CLEAR")) {
                     selectedElems.clear();
                 }
@@ -912,6 +935,8 @@ namespace Rendering{
             {
 
                 if (GuiWindowBox(windowPos, "Element Information")) ActionFlags &= ~GuiFlags::SHOW_ELEM_INFO;
+                GuiLabel(textPos, "Pick with lClick or Box Select. Hold LeftCtrl to unpick.\nClick CLEAR to clear selection.\nClick SELECT (or rClick) to view persitent info for selected Elements.\nThe Green line is local y-Axis Direction, the Blue line is local z-Axis Direction.");
+
                 if (GuiButton(OkButPos, "Select") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
                     infoElems.clear();
                     for (size_t selected : selectedElems) {
@@ -1017,7 +1042,7 @@ namespace Rendering{
             }
             else if (IsKeyPressed(KEY_TAB)) xActive = true;
 
-            GuiLabel(textIndentedPos, "Pick Nodes and insert Force vector coordinates\nToggle NEG for Negative Values\nADD FORCE (or rClick) adds the force to selected Nodes\nCLEAR clears selected Nodes");
+            GuiLabel(textIndentedPos, "Pick Nodes and insert Force vector coordinates\n\nADD FORCE (or rClick) adds the force to selected Nodes\nCLEAR clears selected Nodes");
             if ((GuiButton(OkButPos, "ADD FORCE") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
                 for (auto nodePos : selectedNodes) {
                     
@@ -1059,7 +1084,7 @@ namespace Rendering{
 
             if (GuiWindowBox(windowPos, "Add Force")) ActionFlags &= ~GuiFlags::BC_ADD_ACTIVE;
 
-            GuiLabel(textPos, "Pick Nodes with left click, unpick with LeftCtrl + click\nADD BC (or rClick) adds the BC to selected Nodes\nCLEAR clears selected Nodes\n");
+            GuiLabel(textPos, "Pick Nodes with left click, unpick with LeftCtrl + click\nADD BC (or rClick) adds the BC(fixed) to selected Nodes\nCLEAR clears selected Nodes\n");
             if ((GuiButton(OkButPos, "ADD BC") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
                 for (auto nodePos : selectedNodes) {
                     model.addBCfixed(nodePos);
@@ -1092,7 +1117,48 @@ namespace Rendering{
             }
         }
 
-       
+        if (GuiFlags::EL_COPY_ACTIVE & ActionFlags) {
+            static float xNew;
+            static float yNew;
+            static float zNew;
+            static char xText[33];
+            static char yText[33];
+            static char zText[33];
+            static bool xActive = false, yActive = false, zActive = false;
+            
+
+
+            if (GuiWindowBox(windowPos, "Element Copy")) ActionFlags &= ~GuiFlags::NODE_ADD_ACTIVE;
+            if (v_GuiValueBoxFloat(xInputPos, "X", &xText[0], &xNew, xActive)) {
+                xActive = !xActive;
+                if (IsKeyPressed(KEY_TAB)) yActive = true;
+            }
+            else if (v_GuiValueBoxFloat(yInputPos, "Y", &yText[0], &yNew, yActive)) {
+                yActive = !yActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) xActive = true;
+                else if (IsKeyPressed(KEY_TAB)) zActive = true;
+            }
+            else if (v_GuiValueBoxFloat(zInputPos, "Z", &zText[0], &zNew, zActive)) {
+                zActive = !zActive;
+                if (IsKeyPressed(KEY_TAB) && IsKeyDown(KEY_LEFT_SHIFT)) yActive = true;
+            }
+            else if (IsKeyPressed(KEY_TAB)) xActive = true;
+
+            GuiLabel(textIndentedPos, "Pick Elements to copy and add offsets in the dialog\n\n COPY (or rClick) performs the operation\n");
+
+
+            if (GuiButton(OkButPos, "COPY") || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+                //NodeAddActive = false;
+
+
+                model.copyElements(selectedElems, Vector3{ (float)xNew,(float)yNew,(float)zNew });
+                selectedElems.clear();
+            }
+            if (GuiButton(clearButIndentedPos, "CLEAR")) {
+                selectedElems.clear();
+            }
+
+        }
     }
 
     void drawInfo(uint32_t& ActionFlags, const Camera& camera, Beams::Model& model,modelDrawState& modelState )

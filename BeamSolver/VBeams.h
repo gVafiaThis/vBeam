@@ -64,7 +64,8 @@ namespace Beams {
 	bool operator< (Node const& l, Node const& v) {
 		if (std::abs(l.x - v.x) > ERR_TOLERANCE) return l.x < v.x;
 		if (std::abs(l.y - v.y) > ERR_TOLERANCE) return l.y < v.y;
-		return l.z < v.z;
+		if (std::abs(l.z - v.z) > ERR_TOLERANCE) return l.z < v.z;
+		return false;
 	}
 
 	//UNUSED -> maybe for map with common local stiffness matrices mapped to element length. 
@@ -218,6 +219,9 @@ namespace Beams {
 			Nodes[pos].matrixPos = matPos;
 		}
 
+		size_t get_nextInsertionPos() {
+			return (deleted.size() > 0) ? *deleted.begin() : Nodes.size();
+		}
 	};
 
 	class Section {
@@ -282,7 +286,7 @@ namespace Beams {
 	class vBeam {
 		Eigen::Index id;
 
-		Eigen::SparseMatrix<double> localBmatrix;
+		Eigen::SparseMatrix<double> localStiffnessMatrix;
 		Eigen::SparseMatrix<double> rotMatrix; //Cosine Matrix
 
 
@@ -356,7 +360,7 @@ namespace Beams {
 			locStiffness_triplets.emplace_back(11, 7, -EIz6);
 			locStiffness_triplets.emplace_back(11, 11, EIz4);
 
-			localBmatrix.setFromTriplets(locStiffness_triplets.begin(), locStiffness_triplets.end());
+			localStiffnessMatrix.setFromTriplets(locStiffness_triplets.begin(), locStiffness_triplets.end());
 
 		};
 
@@ -366,7 +370,7 @@ namespace Beams {
 		};
 
 		void calc_BMatrix(const Section section) {
-			localBmatrix.data().clear();
+			localStiffnessMatrix.data().clear();
 			double Area = section.Area;
 			double Izz = section.Izz;
 			double Iyy = section.Iyy;
@@ -445,7 +449,7 @@ namespace Beams {
 			locStiffness_triplets.emplace_back(11, 7, -EIz6);
 			locStiffness_triplets.emplace_back(11, 11, EIz4);
 
-			localBmatrix.setFromTriplets(locStiffness_triplets.begin(), locStiffness_triplets.end());
+			localStiffnessMatrix.setFromTriplets(locStiffness_triplets.begin(), locStiffness_triplets.end());
 #ifdef DEBUG_PRINTS
 			static bool printed = false;
 			if (printed)return;
@@ -520,7 +524,7 @@ namespace Beams {
 
 
 		vBeam(Eigen::Index id_, const Node& N1, const Node& N2, const Node& N3, size_t _sectionId, const Section& section) {
-			localBmatrix.resize(12, 12);
+			localStiffnessMatrix.resize(12, 12);
 			rotMatrix.resize(12, 12);
 			id = id_;
 			
@@ -561,7 +565,7 @@ namespace Beams {
 			
 
 
-			Eigen::SparseMatrix<double> globalB = rotMatrix * localBmatrix * rotMatrix.transpose();
+			Eigen::SparseMatrix<double> globalB = rotMatrix * localStiffnessMatrix * rotMatrix.transpose();
 			//std::cout << Eigen::MatrixXd(globalB);
 #ifdef DEBUG_PRINTS
 
@@ -787,6 +791,66 @@ namespace Beams {
 
 		}
 
+		void copyElements(std::vector<size_t> ePositions, Vector3 offset) {
+			std::unordered_map<size_t, size_t> nodePosMap;
+
+			for (auto ePos : ePositions) {
+
+				vBeam& element = Elements[ePos];
+
+				auto emplace = nodePosMap.emplace(element.node1Pos, Nodes.get_nextInsertionPos());
+				if (emplace.second) {
+					const Node& node = Nodes.get_byPos(element.node1Pos);
+					addNode(Vector3{ offset.x + (float)node.x, offset.y + (float)node.y, offset.z + (float)node.z });
+				}
+				emplace = nodePosMap.emplace(element.node2Pos, Nodes.get_nextInsertionPos());
+				if (emplace.second) {
+					const Node& node = Nodes.get_byPos(element.node2Pos);
+					addNode(Vector3{ offset.x + (float)node.x, offset.y + (float)node.y, offset.z + (float)node.z });
+				}
+				emplace = nodePosMap.emplace(element.node3Pos, Nodes.get_nextInsertionPos());
+				if (emplace.second) {
+					const Node& node = Nodes.get_byPos(element.node3Pos);
+					addNode(Vector3{ offset.x + (float)node.x, offset.y + (float)node.y, offset.z + (float)node.z });
+				}
+
+				addElement(nodePosMap[element.node1Pos], nodePosMap[element.node2Pos], nodePosMap[element.node3Pos], element.getSectionId());
+			}
+		}
+		
+		std::vector<size_t> findDuplicateElements() {
+			std::map<std::pair<size_t,size_t>,size_t> originals;
+			std::vector<size_t> pos;
+
+			size_t elPosition = 0;
+			for (auto& element : Elements) {
+				auto emplacePair = originals.emplace(std::make_pair(element.node1Pos, element.node2Pos), elPosition);
+				if (!emplacePair.second) pos.push_back(elPosition);
+				++elPosition;
+			}
+
+			return pos;
+
+		}
+
+		void removeDuplicateElems(std::vector<size_t>& posMap) {
+			std::sort(posMap.rbegin(), posMap.rend());//inverse sort the element positions to remove from end and not ivalidate positions
+
+			for (auto& duplicateElemPos : posMap) {
+				
+				vBeam& duplicateElem = Elements[duplicateElemPos];
+
+				removeElement(duplicateElemPos);
+
+				
+			}
+		}
+
+		void removeDuplicateElems() {
+			std::vector<size_t> a = findDuplicateElements();
+			removeDuplicateElems(a);
+		}
+
 		size_t getElementPos_byId(Eigen::Index id) {
 			auto comparer = [](vBeam& e1, Eigen::Index val) {return e1.getID() < val; };
 
@@ -800,7 +864,7 @@ namespace Beams {
 
 			addNode(Vector3{ 0,0,0 });
 			addNode(Vector3{ 50, 0, 0 });
-			addNode(Vector3{ 0.2, 50,0 });
+			addNode(Vector3{ 0, 50,0 });
 			addNode(Vector3{ 100, 0, 0 });
 			addNode(Vector3{ 150, 0, 0 });
 			addNode(Vector3{ 200, 0, 0 });
