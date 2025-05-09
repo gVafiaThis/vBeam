@@ -1095,7 +1095,7 @@ namespace Beams {
 				}
 				std::cout << "Sparse Solving Successful\n";
 				solved = true;
-				std::cout << U;
+				//std::cout << U;
 				Urender = U * RENDER_SCALING_FACTOR * scaleFactor;
 #ifdef DEBUG_PRINTS
 				//std::cout << "\n--------------------------------\nForce Vector\n" << Eigen::VectorXd(F) << "\n";
@@ -1108,7 +1108,7 @@ namespace Beams {
 			std::cout << "Sparse LU decomposition failed\nConverting to Dense\n";
 			Eigen::MatrixXd A(globMatr);// DO EXCEPTION HERE if this fails Also
 			U = A.lu().solve(Eigen::VectorXd(F)).sparseView();
-			std::cout << F << "\n" << A << "\n" << U;
+			//std::cout << F << "\n" << A << "\n" << U;
 			Urender.resize(U.rows());
 			Urender = U * RENDER_SCALING_FACTOR * scaleFactor;
 			solved = true;
